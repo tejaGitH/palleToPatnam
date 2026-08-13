@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Palle To Patnam - Owner Control Tower</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #f4f6f8; margin: 0; padding: 20px; color: #333; }
+    
+    .header { background: #1a1a2e; color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { margin: 0; font-size: 24px; }
+    .header p { margin: 5px 0 0 0; color: #a0a0b0; font-size: 14px; }
+
+    /* Financial Cards Grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+    .stat-card { background: white; padding: 18px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-left: 5px solid #2563eb; }
+    .stat-card.green { border-left-color: #10b981; }
+    .stat-card.red { border-left-color: #ef4444; }
+    .stat-card.purple { border-left-color: #8b5cf6; }
+    .stat-card.emerald { border-left-color: #059669; background: #ecfdf5; }
+    .stat-label { font-size: 13px; color: #666; text-transform: uppercase; font-weight: 600; }
+    .stat-value { font-size: 26px; font-weight: bold; margin-top: 8px; color: #111; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .card h3 { margin-top: 0; color: #1a1a2e; font-size: 18px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
+    
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #eee; }
+    th { background: #fafafa; color: #666; font-size: 13px; }
+    
+    .stock-badge { background: #e8f5e9; color: #2e7d32; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 13px; }
+    
+    input, select { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    .btn { background: #2563eb; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    .btn:hover { background: #1d4ed8; }
+    .btn-danger { background: #ef4444; }
+    .btn-danger:hover { background: #dc2626; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <h1>Palle To Patnam — Control Tower & P&L</h1>
+      <p>Live Sales, Expense Logging & Net Profit Tracking</p>
+    </div>
+    <button class="btn" onclick="refreshDashboard()">🔄 Refresh All Metrics</button>
+  </div>
+
+  <!-- Financial Cards -->
+  <div class="stats-grid">
+    <div class="stat-card green">
+      <div class="stat-label">Total Revenue (Sales)</div>
+      <div class="stat-value" id="total-revenue">₹0.00</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Daily Operating Expenses</div>
+      <div class="stat-value" id="total-expenses">₹0.00</div>
+    </div>
+    <div class="stat-card emerald">
+      <div class="stat-label">Net Daily Profit</div>
+      <div class="stat-value" id="net-profit" style="color: #047857;">₹0.00</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-label">Total Bills Printed</div>
+      <div class="stat-value" id="total-bills">0</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- Log Daily Expense Form -->
+    <div class="card">
+      <h3>💸 Log Daily Expense</h3>
+      <form id="expense-form" onsubmit="logExpense(event)">
+        <label style="font-size: 12px; font-weight: bold; color: #555;">Category</label>
+        <select id="expense-category" required>
+          <option value="Raw Materials">Raw Materials (Veggies, Meat)</option>
+          <option value="Gas & Utilities">Gas & Commercial Utilities</option>
+          <option value="Staff Wages/Advance">Staff Advance / Daily Wages</option>
+          <option value="Maintenance">Cleaning & Store Maintenance</option>
+          <option value="Packaging">Packaging Materials</option>
+          <option value="Other">Other Misc Expense</option>
+        </select>
+
+        <label style="font-size: 12px; font-weight: bold; color: #555;">Amount (₹)</label>
+        <input type="number" id="expense-amount" placeholder="e.g. 1200" required>
+
+        <label style="font-size: 12px; font-weight: bold; color: #555;">Description / Notes</label>
+        <input type="text" id="expense-desc" placeholder="e.g. 5kg Veggies from local market">
+
+        <button type="submit" class="btn btn-danger" style="width: 100%;">➕ Save Expense Entry</button>
+      </form>
+      <div id="expense-msg" style="font-size: 12px; color: #2e7d32; margin-top: 8px;"></div>
+    </div>
+
+    <!-- Live Stock Levels -->
+    <div class="card" style="grid-column: span 2;">
+      <h3>📦 Live Raw Ingredient Stock</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Ingredient Name</th>
+            <th>Current Stock</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="stock-table">
+          <tr><td colspan="3">Loading live stock...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    async function fetchFinancials() {
+      try {
+        const res = await fetch('http://localhost:5000/api/financials');
+        const data = await res.json();
+        
+        document.getElementById('total-revenue').innerText = `₹${data.totalRevenue.toLocaleString()}`;
+        document.getElementById('total-expenses').innerText = `₹${data.totalExpenses.toLocaleString()}`;
+        document.getElementById('net-profit').innerText = `₹${data.netProfit.toLocaleString()}`;
+      } catch (err) {
+        console.error('Financials Error:', err);
+      }
+    }
+
+    async function fetchAnalytics() {
+      try {
+        const res = await fetch('http://localhost:5000/api/analytics');
+        const data = await res.json();
+        document.getElementById('total-bills').innerText = data.totalBills;
+      } catch (err) {
+        console.error('Analytics Error:', err);
+      }
+    }
+
+    async function fetchStock() {
+      try {
+        const res = await fetch('http://localhost:5000/api/inventory');
+        const data = await res.json();
+        const tbody = document.getElementById('stock-table');
+        tbody.innerHTML = '';
+
+        if(data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="3">No stock data yet. Run an order test!</td></tr>';
+          return;
+        }
+
+        data.forEach(item => {
+          tbody.innerHTML += `
+            <tr>
+              <td><strong>${item.ingredient_name}</strong></td>
+              <td>${item.current_stock} ${item.unit}</td>
+              <td><span class="stock-badge">Active</span></td>
+            </tr>
+          `;
+        });
+      } catch (err) {
+        console.error('Stock Error:', err);
+      }
+    }
+
+    async function logExpense(event) {
+      event.preventDefault();
+      
+      const category = document.getElementById('expense-category').value;
+      const amount = Number(document.getElementById('expense-amount').value);
+      const description = document.getElementById('expense-desc').value;
+
+      try {
+        const res = await fetch('http://localhost:5000/api/expenses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, amount, description })
+        });
+
+        const result = await res.json();
+        document.getElementById('expense-msg').innerText = `✅ ${result.message}`;
+        document.getElementById('expense-form').reset();
+        
+        refreshDashboard();
+      } catch (err) {
+        console.error('Expense Save Error:', err);
+      }
+    }
+
+    function refreshDashboard() {
+      fetchFinancials();
+      fetchAnalytics();
+      fetchStock();
+    }
+
+    // Initial Load
+    refreshDashboard();
+  </script>
+</body>
+</html>
