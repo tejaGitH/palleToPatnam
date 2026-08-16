@@ -1,31 +1,41 @@
 // controllers/inventoryController.js
 const Dish = require('../models/Dish');
 const Inventory = require('../models/Inventory');
+const { convertToBaseUnit } = require('../utils/unitConverter');
 
 exports.processBillAndBurnStock = async (orderedItems) => {
   try {
     for (let item of orderedItems) {
-      // Find the dish recipe by item_code
-      const dish = await Dish.findOne({ item_code: item.item_code });
+      // Find the dish recipe by item_code or dish_name
+      const dish = await Dish.findOne({
+        $or: [
+          { item_code: String(item.item_code) },
+          { dish_name: new RegExp(`^${item.item_name}$`, 'i') }
+        ]
+      });
 
       if (dish && dish.recipe && dish.recipe.length > 0) {
         for (let ingredient of dish.recipe) {
-          const totalBurnQuantity = ingredient.quantity * item.qty;
+          const totalBurnQuantity = (ingredient.quantity * Number(item.qty)) || 0;
+          const { baseQty, baseUnit } = convertToBaseUnit(totalBurnQuantity, ingredient.unit);
 
-          // Upsert: Deducts stock if ingredient exists, or creates it if missing
+          // Deducts stock from Atlas Inventory
           await Inventory.updateOne(
-            { ingredient_name: ingredient.ingredient_name },
+            { ingredient_name: new RegExp(`^${ingredient.ingredient_name.trim()}$`, 'i') },
             { 
-              $inc: { current_stock: -totalBurnQuantity },
-              $setOnInsert: { unit: ingredient.unit }
+              $inc: { current_stock: -baseQty },
+              $setOnInsert: { 
+                ingredient_name: ingredient.ingredient_name.trim(),
+                unit: baseUnit 
+              }
             },
             { upsert: true }
           );
 
-          console.log(`🔥 [STOCK BURN] Deducted ${totalBurnQuantity}${ingredient.unit} of ${ingredient.ingredient_name}`);
+          console.log(`🔥 [STOCK BURN] Deducted ${baseQty}${baseUnit} of ${ingredient.ingredient_name} for order: ${dish.dish_name} (Qty: ${item.qty})`);
         }
       } else {
-        console.log(`⚠️ No recipe found for item_code: ${item.item_code}`);
+        console.log(`⚠️ No recipe found for: ${item.item_name || item.item_code}`);
       }
     }
   } catch (error) {

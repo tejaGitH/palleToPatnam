@@ -3,197 +3,686 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Palle To Patnam - Owner Control Tower</title>
+  <title>Palle To Patnam - Control Tower & Realtime Inventory</title>
+  <!-- html2pdf for purchase order slips -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background: #f4f6f8; margin: 0; padding: 20px; color: #333; }
+    body { background: #f1f5f9; margin: 0; padding: 24px; color: #0f172a; }
     
-    .header { background: #1a1a2e; color: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-    .header h1 { margin: 0; font-size: 24px; }
-    .header p { margin: 5px 0 0 0; color: #a0a0b0; font-size: 14px; }
+    .header { background: #0f172a; color: white; padding: 22px 28px; border-radius: 14px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+    .header h1 { margin: 0; font-size: 22px; }
+    .header p { margin: 4px 0 0 0; color: #94a3b8; font-size: 13px; }
 
-    /* Financial Cards Grid */
-    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-    .stat-card { background: white; padding: 18px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-left: 5px solid #2563eb; }
+    /* Time Filter Bar */
+    .filter-bar { background: white; padding: 14px 20px; border-radius: 12px; margin-bottom: 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .btn-group { display: flex; gap: 8px; }
+    .filter-btn { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 8px 14px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; color: #475569; }
+    .filter-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+
+    /* Stats Grid */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: white; padding: 18px; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); border-left: 5px solid #2563eb; }
     .stat-card.green { border-left-color: #10b981; }
     .stat-card.red { border-left-color: #ef4444; }
     .stat-card.purple { border-left-color: #8b5cf6; }
-    .stat-card.emerald { border-left-color: #059669; background: #ecfdf5; }
-    .stat-label { font-size: 13px; color: #666; text-transform: uppercase; font-weight: 600; }
-    .stat-value { font-size: 26px; font-weight: bold; margin-top: 8px; color: #111; }
+    .stat-card.amber { border-left-color: #f59e0b; }
+    .stat-label { font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 700; }
+    .stat-value { font-size: 24px; font-weight: 800; margin-top: 6px; color: #0f172a; }
 
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
-    .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-    .card h3 { margin-top: 0; color: #1a1a2e; font-size: 18px; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 24px; margin-bottom: 24px; }
+    .card { background: white; padding: 22px; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+    .card h3 { margin-top: 0; color: #0f172a; font-size: 16px; border-bottom: 2px solid #f1f5f9; padding-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
     
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #eee; }
-    th { background: #fafafa; color: #666; font-size: 13px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+    th { background: #f8fafc; color: #64748b; font-weight: 600; }
     
-    .stock-badge { background: #e8f5e9; color: #2e7d32; padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 13px; }
+    .badge { padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; text-transform: uppercase; }
+    .badge-ordered { background: #fef3c7; color: #b45309; }
+    .badge-received { background: #dcfce7; color: #15803d; }
+    .badge-danger { background: #fee2e2; color: #dc2626; }
+
+    input, select { width: 100%; padding: 9px 12px; margin-bottom: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px; outline: none; }
+    input:focus, select:focus { border-color: #3b82f6; }
     
-    input, select { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
-    .btn { background: #2563eb; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+    .btn { background: #2563eb; color: white; border: none; padding: 9px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; }
     .btn:hover { background: #1d4ed8; }
-    .btn-danger { background: #ef4444; }
-    .btn-danger:hover { background: #dc2626; }
+    .btn-sm { padding: 5px 9px; font-size: 12px; }
+    .btn-success { background: #10b981; }
+    .btn-success:hover { background: #059669; }
+    .btn-secondary { background: #64748b; }
+    .btn-secondary:hover { background: #475569; }
+    
+    .item-row, .recipe-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 28px; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .recipe-row { grid-template-columns: 2fr 1fr 1fr 28px; }
+
+    /* Hidden Printable Sheet */
+    #pdf-slip { display: none; background: white; padding: 25px; color: #111; }
   </style>
 </head>
 <body>
 
   <div class="header">
     <div>
-      <h1>Palle To Patnam — Control Tower & P&L</h1>
-      <p>Live Sales, Expense Logging & Net Profit Tracking</p>
+      <h1>Palle To Patnam — Restaurant Control Tower</h1>
+      <p>Real-time Customer Bills, Inventory Deduction & Shop Indents</p>
     </div>
-    <button class="btn" onclick="refreshDashboard()">🔄 Refresh All Metrics</button>
+    <button class="btn" onclick="refreshDashboard()">🔄 Refresh Live Data</button>
   </div>
 
-  <!-- Financial Cards -->
+  <!-- Time Filter Bar -->
+  <div class="filter-bar">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span style="font-weight: 700; font-size: 13px; color: #334155;">View Range:</span>
+      <div class="btn-group">
+        <button class="filter-btn active" id="btn-today" onclick="setTimeframe('today')">Today</button>
+        <button class="filter-btn" id="btn-week" onclick="setTimeframe('week')">Last 7 Days</button>
+        <button class="filter-btn" id="btn-month" onclick="setTimeframe('month')">This Month</button>
+        <button class="filter-btn" id="btn-all" onclick="setTimeframe('all')">All Time</button>
+      </div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <input type="date" id="start-date" style="margin:0; width: 140px;">
+      <span>to</span>
+      <input type="date" id="end-date" style="margin:0; width: 140px;">
+      <button class="btn btn-secondary btn-sm" onclick="applyCustomDate()">Filter</button>
+    </div>
+  </div>
+
+  <!-- Metric Cards -->
   <div class="stats-grid">
     <div class="stat-card green">
-      <div class="stat-label">Total Revenue (Sales)</div>
-      <div class="stat-value" id="total-revenue">₹0.00</div>
+      <div class="stat-label">Sales Revenue (<span class="current-range-label">Today</span>)</div>
+      <div class="stat-value" id="stat-revenue">₹0</div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-label">Purchases Indented (<span class="current-range-label">Today</span>)</div>
+      <div class="stat-value" id="stat-purchases">₹0</div>
     </div>
     <div class="stat-card red">
-      <div class="stat-label">Daily Operating Expenses</div>
-      <div class="stat-value" id="total-expenses">₹0.00</div>
-    </div>
-    <div class="stat-card emerald">
-      <div class="stat-label">Net Daily Profit</div>
-      <div class="stat-value" id="net-profit" style="color: #047857;">₹0.00</div>
+      <div class="stat-label">Operating Expenses (<span class="current-range-label">Today</span>)</div>
+      <div class="stat-value" id="stat-expenses">₹0</div>
     </div>
     <div class="stat-card purple">
-      <div class="stat-label">Total Bills Printed</div>
-      <div class="stat-value" id="total-bills">0</div>
+      <div class="stat-label">Net Profit Margin</div>
+      <div class="stat-value" id="stat-profit">₹0</div>
     </div>
+  </div>
+
+  <!-- TOP SECTION: Customer Order Simulation & Shop Indents -->
+  <div class="grid">
+    <!-- 1. Customer Bill / Order Trigger -->
+    <div class="card" style="border-top: 4px solid #10b981;">
+      <h3>
+        🧾 Customer Order / Bill Simulator
+        <span style="font-size:11px; font-weight:normal; color:#10b981; font-weight:bold;">[Live Stock Burn]</span>
+      </h3>
+      <p style="font-size:12px; color:#64748b; margin-top:-6px;">Simulate customer bill printing (happens automatically via Petpooja webhook).</p>
+      
+      <form id="order-form" onsubmit="punchCustomerOrder(event)">
+        <label style="font-size: 12px; font-weight: 600;">Select Menu Dish Ordered:</label>
+        <select id="order-dish-select" required onchange="updateOrderPricePreview()">
+          <option value="">-- Choose Dish --</option>
+        </select>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="font-size: 12px; font-weight: 600;">Portion / Qty:</label>
+            <input type="number" id="order-qty" min="1" value="1" required oninput="updateOrderPricePreview()">
+          </div>
+          <div>
+            <label style="font-size: 12px; font-weight: 600;">Estimated Bill (₹):</label>
+            <input type="number" id="order-total" placeholder="₹ Total" required>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-success" style="width: 100%; margin-top: 6px;">🔥 Punch Customer Order & Burn Stock</button>
+      </form>
+      <div id="order-msg" style="font-size: 12px; color: #16a34a; margin-top: 6px;"></div>
+    </div>
+
+    <!-- 2. Create Purchase Indent (Shop Order) -->
+    <div class="card" style="border-top: 4px solid #f59e0b;">
+      <h3>
+        🛒 Create Shop Purchase Indent
+        <span style="font-size:11px; font-weight:normal; color:#b45309; font-weight:bold;">[Stock Inward]</span>
+      </h3>
+      <p style="font-size:12px; color:#64748b; margin-top:-6px;">Create indent for vendors $\rightarrow$ click Inward to add to stock.</p>
+      
+      <form id="po-form" onsubmit="createPurchaseOrder(event)">
+        <input type="text" id="po-vendor" placeholder="Shop / Vendor (e.g. Sri Lakshmi Veggie Mandi)" required>
+
+        <div id="items-container">
+          <div class="item-row">
+            <input type="text" placeholder="Ingredient" class="item-name" required>
+            <input type="number" step="0.1" placeholder="Qty" class="item-qty" required>
+            <select class="item-unit">
+              <option value="kg">kg</option>
+              <option value="ltr">ltr</option>
+              <option value="units">units</option>
+              <option value="gms">gms</option>
+            </select>
+            <input type="number" placeholder="₹/Unit" class="item-rate" required>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-secondary btn-sm" style="width: 100%; margin-bottom: 8px;" onclick="addItemRow()">➕ Add Another Item</button>
+        <button type="submit" class="btn" style="width: 100%;">📄 Save & Generate Shop Order Slip</button>
+      </form>
+      <div id="po-msg" style="font-size: 12px; color: #16a34a; margin-top: 6px;"></div>
+    </div>
+  </div>
+
+  <!-- LIVE INVENTORY TABLE (Purchased vs Consumed vs Balance) -->
+  <div class="card" style="margin-bottom: 24px;">
+    <h3>📦 Live Kitchen Raw Material Inventory (Atlas DB)</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Raw Ingredient</th>
+          <th>Unit</th>
+          <th>Available Stock Balance</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="stock-table">
+        <tr><td colspan="4">Loading live inventory...</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <div class="grid">
-    <!-- Log Daily Expense Form -->
+    <!-- Active Menu Recipes & BOM -->
     <div class="card">
-      <h3>💸 Log Daily Expense</h3>
-      <form id="expense-form" onsubmit="logExpense(event)">
-        <label style="font-size: 12px; font-weight: bold; color: #555;">Category</label>
-        <select id="expense-category" required>
-          <option value="Raw Materials">Raw Materials (Veggies, Meat)</option>
-          <option value="Gas & Utilities">Gas & Commercial Utilities</option>
-          <option value="Staff Wages/Advance">Staff Advance / Daily Wages</option>
-          <option value="Maintenance">Cleaning & Store Maintenance</option>
-          <option value="Packaging">Packaging Materials</option>
-          <option value="Other">Other Misc Expense</option>
-        </select>
+      <h3>
+        🍲 Registered Dishes & BOM Recipes
+        <button class="btn btn-sm btn-secondary" onclick="toggleRecipeForm()">+ New Recipe</button>
+      </h3>
 
-        <label style="font-size: 12px; font-weight: bold; color: #555;">Amount (₹)</label>
-        <input type="number" id="expense-amount" placeholder="e.g. 1200" required>
+      <div id="new-recipe-container" style="display:none; background:#f8fafc; padding:12px; border-radius:8px; margin-bottom:12px; border:1px dashed #cbd5e1;">
+        <form id="recipe-form" onsubmit="saveDishRecipe(event)">
+          <div style="display:grid; grid-template-columns: 1fr 2fr; gap:8px;">
+            <input type="text" id="dish-code" placeholder="Code (e.g. 101)" required>
+            <input type="text" id="dish-name" placeholder="Dish Name" required>
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+            <input type="text" id="dish-category" placeholder="Category" required>
+            <input type="number" id="dish-price" placeholder="Price (₹)" required>
+          </div>
+          <div id="recipe-ingredients-container">
+            <div class="recipe-row">
+              <input type="text" placeholder="Ingredient" class="rec-ing" required>
+              <input type="number" step="0.1" placeholder="Qty" class="rec-qty" required>
+              <select class="rec-unit">
+                <option value="grams">grams</option>
+                <option value="ml">ml</option>
+                <option value="units">units</option>
+              </select>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" style="width: 100%; margin-bottom: 8px;" onclick="addRecipeRow()">➕ Add Ingredient</button>
+          <button type="submit" class="btn" style="width: 100%;">💾 Save Recipe</button>
+        </form>
+      </div>
 
-        <label style="font-size: 12px; font-weight: bold; color: #555;">Description / Notes</label>
-        <input type="text" id="expense-desc" placeholder="e.g. 5kg Veggies from local market">
-
-        <button type="submit" class="btn btn-danger" style="width: 100%;">➕ Save Expense Entry</button>
-      </form>
-      <div id="expense-msg" style="font-size: 12px; color: #2e7d32; margin-top: 8px;"></div>
-    </div>
-
-    <!-- Live Stock Levels -->
-    <div class="card" style="grid-column: span 2;">
-      <h3>📦 Live Raw Ingredient Stock</h3>
       <table>
         <thead>
           <tr>
-            <th>Ingredient Name</th>
-            <th>Current Stock</th>
-            <th>Status</th>
+            <th>Code</th>
+            <th>Dish Name</th>
+            <th>Price</th>
+            <th>Raw Ingredients Deducted</th>
           </tr>
         </thead>
-        <tbody id="stock-table">
-          <tr><td colspan="3">Loading live stock...</td></tr>
+        <tbody id="dishes-table">
+          <tr><td colspan="4">Loading menu...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Recent Shop Indents & Inwarding -->
+    <div class="card">
+      <h3>📑 Shop Purchase Indents & Inwarding</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>PO Number</th>
+            <th>Vendor</th>
+            <th>Cost</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="po-table">
+          <tr><td colspan="5">Loading purchase orders...</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
+  <!-- Hidden Container for Slip Printing -->
+  <div id="pdf-slip"></div>
+
   <script>
-    async function fetchFinancials() {
-      try {
-        const res = await fetch('http://localhost:5000/api/financials');
-        const data = await res.json();
-        
-        document.getElementById('total-revenue').innerText = `₹${data.totalRevenue.toLocaleString()}`;
-        document.getElementById('total-expenses').innerText = `₹${data.totalExpenses.toLocaleString()}`;
-        document.getElementById('net-profit').innerText = `₹${data.netProfit.toLocaleString()}`;
-      } catch (err) {
-        console.error('Financials Error:', err);
+    let currentTimeframe = 'today';
+    let customStartDate = '';
+    let customEndDate = '';
+    let allPOs = [];
+    let menuDishes = [];
+
+    function setTimeframe(tf) {
+      currentTimeframe = tf;
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = document.getElementById(`btn-${tf}`);
+      if(activeBtn) activeBtn.classList.add('active');
+      
+      const labels = { today: 'Today', week: 'Last 7 Days', month: 'This Month', all: 'All Time' };
+      document.querySelectorAll('.current-range-label').forEach(el => el.innerText = labels[tf] || tf);
+      
+      refreshDashboard();
+    }
+
+    function applyCustomDate() {
+      const s = document.getElementById('start-date').value;
+      const e = document.getElementById('end-date').value;
+      if (!s || !e) return alert("Please select start and end dates");
+      customStartDate = s;
+      customEndDate = e;
+      currentTimeframe = 'custom';
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.current-range-label').forEach(el => el.innerText = `${s} to ${e}`);
+      refreshDashboard();
+    }
+
+    function toggleRecipeForm() {
+      const el = document.getElementById('new-recipe-container');
+      el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function addItemRow() {
+      const container = document.getElementById('items-container');
+      const row = document.createElement('div');
+      row.className = 'item-row';
+      row.innerHTML = `
+        <input type="text" placeholder="Ingredient" class="item-name" required>
+        <input type="number" step="0.1" placeholder="Qty" class="item-qty" required>
+        <select class="item-unit">
+          <option value="kg">kg</option>
+          <option value="ltr">ltr</option>
+          <option value="units">units</option>
+          <option value="gms">gms</option>
+        </select>
+        <input type="number" placeholder="₹/Unit" class="item-rate" required>
+        <button type="button" onclick="this.parentElement.remove()" style="background:#fee2e2; border:none; color:#ef4444; border-radius:6px; cursor:pointer; height:32px;">✕</button>
+      `;
+      container.appendChild(row);
+    }
+
+    function addRecipeRow() {
+      const container = document.getElementById('recipe-ingredients-container');
+      const row = document.createElement('div');
+      row.className = 'recipe-row';
+      row.innerHTML = `
+        <input type="text" placeholder="Ingredient" class="rec-ing" required>
+        <input type="number" step="0.1" placeholder="Qty" class="rec-qty" required>
+        <select class="rec-unit">
+          <option value="grams">grams</option>
+          <option value="ml">ml</option>
+          <option value="units">units</option>
+        </select>
+        <button type="button" onclick="this.parentElement.remove()" style="background:#fee2e2; border:none; color:#ef4444; border-radius:6px; cursor:pointer; height:32px;">✕</button>
+      `;
+      container.appendChild(row);
+    }
+
+    function formatStockDisplay(qty, unit) {
+      if (unit === 'grams' && Math.abs(qty) >= 1000) {
+        return `${(qty / 1000).toFixed(2)} kg`;
+      }
+      if (unit === 'ml' && Math.abs(qty) >= 1000) {
+        return `${(qty / 1000).toFixed(2)} L`;
+      }
+      return `${qty} ${unit || 'units'}`;
+    }
+
+    // Update Price Preview on Order Simulator
+    function updateOrderPricePreview() {
+      const sel = document.getElementById('order-dish-select');
+      const qty = Number(document.getElementById('order-qty').value) || 1;
+      const selectedOption = sel.options[sel.selectedIndex];
+      if (selectedOption && selectedOption.dataset.price) {
+        const unitPrice = Number(selectedOption.dataset.price);
+        document.getElementById('order-total').value = unitPrice * qty;
       }
     }
 
-    async function fetchAnalytics() {
+    // 1. Customer Order Simulator Trigger (Simulates Petpooja Bill)
+    async function punchCustomerOrder(e) {
+      e.preventDefault();
+      const sel = document.getElementById('order-dish-select');
+      const item_code = sel.value;
+      const item_name = sel.options[sel.selectedIndex].text.split(' - ')[0];
+      const qty = Number(document.getElementById('order-qty').value);
+      const total_amount = Number(document.getElementById('order-total').value);
+
+      if(!item_code) return alert("Select a dish first!");
+
       try {
-        const res = await fetch('http://localhost:5000/api/analytics');
+        const res = await fetch('/api/webhook/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bill_number: `BILL-${Date.now().toString().slice(-4)}`,
+            total_amount,
+            items: [{ item_code, item_name, qty }]
+          })
+        });
         const data = await res.json();
-        document.getElementById('total-bills').innerText = data.totalBills;
+        document.getElementById('order-msg').innerText = `✅ Order Punched! Burned recipe stock for ${qty}x ${item_name}`;
+        refreshDashboard();
       } catch (err) {
-        console.error('Analytics Error:', err);
+        console.error(err);
+      }
+    }
+
+    // 2. Create Purchase Indent
+    async function createPurchaseOrder(e) {
+      e.preventDefault();
+      const vendor_name = document.getElementById('po-vendor').value;
+      const itemNames = document.querySelectorAll('.item-name');
+      const itemQtys = document.querySelectorAll('.item-qty');
+      const itemUnits = document.querySelectorAll('.item-unit');
+      const itemRates = document.querySelectorAll('.item-rate');
+
+      const items = [];
+      for (let i = 0; i < itemNames.length; i++) {
+        items.push({
+          ingredient_name: itemNames[i].value,
+          quantity: Number(itemQtys[i].value),
+          unit: itemUnits[i].value,
+          unit_price: Number(itemRates[i].value)
+        });
+      }
+
+      try {
+        const res = await fetch('/api/purchases', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vendor_name, items })
+        });
+        const data = await res.json();
+        document.getElementById('po-msg').innerText = `✅ Created Order #${data.purchaseOrder.po_number}!`;
+        document.getElementById('po-form').reset();
+        refreshDashboard();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    // 3. Inward PO (Mark as Purchased)
+    async function inwardPO(id) {
+      if (!confirm("Confirm marking this order as Purchased? This will add ingredients to live stock.")) return;
+      try {
+        const res = await fetch(`/api/purchases/${id}/inward`, { method: 'POST' });
+        const data = await res.json();
+        alert(data.message || data.error);
+        refreshDashboard();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    // Save Dish Recipe
+    async function saveDishRecipe(e) {
+      e.preventDefault();
+      const item_code = document.getElementById('dish-code').value;
+      const dish_name = document.getElementById('dish-name').value;
+      const category = document.getElementById('dish-category').value;
+      const price = Number(document.getElementById('dish-price').value);
+
+      const ings = document.querySelectorAll('.rec-ing');
+      const qtys = document.querySelectorAll('.rec-qty');
+      const units = document.querySelectorAll('.rec-unit');
+
+      const recipe = [];
+      for (let i = 0; i < ings.length; i++) {
+        recipe.push({
+          ingredient_name: ings[i].value.trim(),
+          quantity: Number(qtys[i].value),
+          unit: units[i].value
+        });
+      }
+
+      try {
+        const res = await fetch('/api/dishes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_code, dish_name, category, price, recipe })
+        });
+        await res.json();
+        document.getElementById('recipe-form').reset();
+        toggleRecipeForm();
+        refreshDashboard();
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    // PDF Download for PO
+    function downloadPOAsPDF(poId) {
+      const po = allPOs.find(p => p._id === poId);
+      if (!po) return;
+
+      const slip = document.getElementById('pdf-slip');
+      slip.style.display = 'block';
+
+      const isReceived = po.status === 'RECEIVED';
+      const statusTitle = isReceived ? "PURCHASE & INWARD RECEIPT" : "STORE PURCHASE INDENT / REQUISITION";
+      const statusColor = isReceived ? "#15803d" : "#b45309";
+
+      let itemsRows = po.items.map((item, idx) => `
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 10px; text-align: center;">${idx + 1}</td>
+          <td style="padding: 10px; font-weight: bold; font-size: 14px;">${item.ingredient_name}</td>
+          <td style="padding: 10px; text-align: center; font-size: 14px; font-weight: bold;">${item.quantity} ${item.unit}</td>
+          <td style="padding: 10px; text-align: right;">₹${item.unit_price}</td>
+          <td style="padding: 10px; text-align: right; font-weight: bold;">₹${item.total_price.toLocaleString()}</td>
+          <td style="padding: 10px; text-align: center;">[ &nbsp; ]</td>
+        </tr>
+      `).join('');
+
+      slip.innerHTML = `
+        <div style="max-width: 700px; margin: 0 auto; font-family: Arial, sans-serif;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 12px;">
+            <div>
+              <h2 style="margin:0; color:#0f172a;">PALLE TO PATNAM</h2>
+              <p style="margin: 3px 0 0 0; font-size: 12px; color: #64748b;">Village Flavours Restaurant</p>
+            </div>
+            <div style="text-align: right;">
+              <span style="background: ${statusColor}15; color: ${statusColor}; border: 1px solid ${statusColor}; font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 4px;">
+                ${statusTitle}
+              </span>
+              <p style="margin: 5px 0 0 0; font-size: 13px; font-weight: bold;">${po.po_number}</p>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; margin: 18px 0; font-size: 13px;">
+            <div>
+              <span style="color: #64748b; font-size: 11px; font-weight: bold;">VENDOR / SHOP:</span><br>
+              <strong style="font-size: 15px;">${po.vendor_name}</strong>
+            </div>
+            <div style="text-align: right;">
+              <span style="color: #64748b; font-size: 11px; font-weight: bold;">DATE:</span><br>
+              <strong>${new Date(po.created_at).toLocaleString()}</strong>
+            </div>
+          </div>
+
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px;">
+            <thead>
+              <tr style="background: #f8fafc; border-top: 1px solid #cbd5e1; border-bottom: 1px solid #cbd5e1;">
+                <th style="padding: 8px; text-align: center; width: 35px;">#</th>
+                <th style="padding: 8px; text-align: left;">Required Raw Item</th>
+                <th style="padding: 8px; text-align: center;">Quantity to Buy</th>
+                <th style="padding: 8px; text-align: right;">Rate</th>
+                <th style="padding: 8px; text-align: right;">Total</th>
+                <th style="padding: 8px; text-align: center; width: 60px;">Check</th>
+              </tr>
+            </thead>
+            <tbody>${itemsRows}</tbody>
+          </table>
+
+          <div style="margin-top: 18px; text-align: right; border-top: 2px solid #0f172a; padding-top: 10px;">
+            <strong>Estimated Order Value: ₹${po.grand_total.toLocaleString()}</strong>
+          </div>
+        </div>
+      `;
+
+      html2pdf().set({
+        margin: [0.3, 0.3],
+        filename: `${po.po_number}_${po.vendor_name.replace(/\s+/g, '_')}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+      }).from(slip).save().then(() => {
+        slip.style.display = 'none';
+      });
+    }
+
+    async function fetchDishes() {
+      try {
+        const res = await fetch('/api/dishes');
+        menuDishes = await res.json();
+        
+        // Update Table
+        const tbody = document.getElementById('dishes-table');
+        tbody.innerHTML = '';
+
+        // Update Dropdown in Order Simulator
+        const select = document.getElementById('order-dish-select');
+        select.innerHTML = '<option value="">-- Choose Dish --</option>';
+
+        menuDishes.forEach(d => {
+          const bom = d.recipe.map(r => `${r.ingredient_name} (${r.quantity}${r.unit})`).join(', ');
+          tbody.innerHTML += `
+            <tr>
+              <td><strong>${d.item_code}</strong></td>
+              <td>${d.dish_name}</td>
+              <td>₹${d.price}</td>
+              <td style="font-size: 12px; color: #475569;">${bom}</td>
+            </tr>
+          `;
+
+          // Add to simulator select dropdown
+          const opt = document.createElement('option');
+          opt.value = d.item_code;
+          opt.text = `${d.dish_name} - ₹${d.price}`;
+          opt.dataset.price = d.price;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function fetchPurchases() {
+      try {
+        let url = `/api/purchases?timeframe=${currentTimeframe}`;
+        if (currentTimeframe === 'custom') url += `&startDate=${customStartDate}&endDate=${customEndDate}`;
+        const res = await fetch(url);
+        allPOs = await res.json();
+        const tbody = document.getElementById('po-table');
+        tbody.innerHTML = '';
+
+        if (!allPOs.length) {
+          tbody.innerHTML = '<tr><td colspan="5">No purchase orders found for this timeframe.</td></tr>';
+          return;
+        }
+
+        allPOs.forEach(po => {
+          const isReceived = po.status === 'RECEIVED';
+          tbody.innerHTML += `
+            <tr>
+              <td><strong>${po.po_number}</strong></td>
+              <td>${po.vendor_name}</td>
+              <td><strong>₹${po.grand_total.toLocaleString()}</strong></td>
+              <td><span class="badge ${isReceived ? 'badge-received' : 'badge-ordered'}">${isReceived ? 'INWARDED' : 'PENDING'}</span></td>
+              <td>
+                <button class="btn btn-sm btn-secondary" onclick="downloadPOAsPDF('${po._id}')">📄 Slip</button>
+                ${!isReceived ? `<button class="btn btn-sm btn-success" onclick="inwardPO('${po._id}')">📥 Inward</button>` : ''}
+              </td>
+            </tr>
+          `;
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function fetchFinancials() {
+      try {
+        let url = `/api/financials?timeframe=${currentTimeframe}`;
+        if (currentTimeframe === 'custom') url += `&startDate=${customStartDate}&endDate=${customEndDate}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        document.getElementById('stat-revenue').innerText = `₹${data.totalRevenue.toLocaleString()}`;
+        document.getElementById('stat-purchases').innerText = `₹${data.totalPurchases.toLocaleString()}`;
+        document.getElementById('stat-expenses').innerText = `₹${data.totalExpenses.toLocaleString()}`;
+        document.getElementById('stat-profit').innerText = `₹${data.netProfit.toLocaleString()}`;
+      } catch (err) {
+        console.error(err);
       }
     }
 
     async function fetchStock() {
       try {
-        const res = await fetch('http://localhost:5000/api/inventory');
+        const res = await fetch('/api/inventory');
         const data = await res.json();
         const tbody = document.getElementById('stock-table');
         tbody.innerHTML = '';
 
-        if(data.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="3">No stock data yet. Run an order test!</td></tr>';
+        if (!data.length) {
+          tbody.innerHTML = '<tr><td colspan="4">Stock is empty. Inward a purchase order to populate!</td></tr>';
           return;
         }
 
         data.forEach(item => {
+          const displayQty = formatStockDisplay(item.current_stock, item.unit);
+          const isNegative = item.current_stock < 0;
+          const isLow = item.current_stock >= 0 && item.current_stock <= 500;
+          
+          let badgeClass = 'badge-received';
+          let statusText = 'Optimal';
+          if (isNegative) {
+            badgeClass = 'badge-danger';
+            statusText = 'Negative / Deficit';
+          } else if (isLow) {
+            badgeClass = 'badge-ordered';
+            statusText = 'Low Stock';
+          }
+
           tbody.innerHTML += `
             <tr>
               <td><strong>${item.ingredient_name}</strong></td>
-              <td>${item.current_stock} ${item.unit}</td>
-              <td><span class="stock-badge">Active</span></td>
+              <td>${item.unit || 'grams'}</td>
+              <td style="font-weight: 800; font-size: 14px; color: ${isNegative ? '#dc2626' : '#0f172a'};">${displayQty}</td>
+              <td><span class="badge ${badgeClass}">${statusText}</span></td>
             </tr>
           `;
         });
       } catch (err) {
-        console.error('Stock Error:', err);
-      }
-    }
-
-    async function logExpense(event) {
-      event.preventDefault();
-      
-      const category = document.getElementById('expense-category').value;
-      const amount = Number(document.getElementById('expense-amount').value);
-      const description = document.getElementById('expense-desc').value;
-
-      try {
-        const res = await fetch('http://localhost:5000/api/expenses', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category, amount, description })
-        });
-
-        const result = await res.json();
-        document.getElementById('expense-msg').innerText = `✅ ${result.message}`;
-        document.getElementById('expense-form').reset();
-        
-        refreshDashboard();
-      } catch (err) {
-        console.error('Expense Save Error:', err);
+        console.error(err);
       }
     }
 
     function refreshDashboard() {
       fetchFinancials();
-      fetchAnalytics();
       fetchStock();
+      fetchDishes();
+      fetchPurchases();
     }
 
-    // Initial Load
     refreshDashboard();
   </script>
 </body>

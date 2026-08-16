@@ -2,12 +2,15 @@
 const mongoose = require('mongoose');
 const Dish = require('./models/Dish');
 
+const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://dbAdmin:dbAdmin@msmewebsitedb.a2hqi3q.mongodb.net/restaurant_db?retryWrites=true&w=majority&appName=msmeWebsiteDb";
+
 const connectDB = async () => {
   try {
-    await mongoose.connect('mongodb://127.0.0.1:27017/restaurant_db');
-    console.log('MongoDB Connected for Seeding...');
+    await mongoose.connect(MONGO_URI);
+    console.log('✅ MongoDB Connected to Atlas for Seeding...');
   } catch (err) {
-    console.error('DB Connection Error:', err);
+    console.error('❌ DB Connection Error:', err.message);
+    process.exit(1);
   }
 };
 
@@ -37,16 +40,16 @@ const initialDishes = [
 
 const seedDB = async () => {
   await connectDB();
-  
-  // Clear old test data and insert new dishes
-  await Dish.deleteMany({});
-  await Dish.insertMany(initialDishes);
-  
-  console.log('Successfully Seeded Menu & Recipes into MongoDB!');
-  process.exit();
+  try {
+    await Dish.deleteMany({});
+    await Dish.insertMany(initialDishes);
+    console.log('✅ Successfully Seeded Menu & Recipes into Atlas DB!');
+  } catch (err) {
+    console.error('❌ Seeding Error:', err.message);
+  } finally {
+    await mongoose.connection.close();
+    process.exit(0);
+  }
 };
 
 seedDB();
-
-
-
