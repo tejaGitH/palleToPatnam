@@ -2,9 +2,11 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+// In server.js
+const Dish = require('./models/dish'); // matching exact file case
 
 const { processBillAndBurnStock } = require('./controllers/inventoryController');
-const Dish = require('./models/Dish');
+
 const Inventory = require('./models/Inventory');
 const Expense = require('./models/Expense');
 const PurchaseOrder = require('./models/PurchaseOrder');
