@@ -13,9 +13,12 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // 1. Connect MongoDB
-mongoose.connect('mongodb://127.0.0.1:27017/restaurant_db')
-  .then(() => console.log('✅ MongoDB Connected'))
-  .catch(err => console.error('DB Error:', err));
+// 1. Connect MongoDB
+const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://dbAdmin:dbAdmin@msmewebsitedb.a2hqi3q.mongodb.net/?appName=msmeWebsiteDb";
+
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('✅ MongoDB Connected to Atlas'))
+  .catch(err => console.error('❌ DB Error:', err.message));
 
 // 2. Define Order Schema matching Petpooja's payload
 const orderSchema = new mongoose.Schema({
@@ -166,5 +169,5 @@ app.get('/api/inventory', async (req, res) => {
   }
 });
 
-const PORT = 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
