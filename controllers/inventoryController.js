@@ -1,5 +1,6 @@
 // controllers/inventoryController.js
-const Dish = require('../models/Dish');
+// In controllers/inventoryController.js
+const Dish = require('../models/dish'); // matching exact file case
 const Inventory = require('../models/Inventory');
 const { convertToBaseUnit } = require('../utils/unitConverter');
 
