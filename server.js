@@ -8,8 +8,8 @@ const Dish = require('./models/dish'); // matching exact file case
 const { processBillAndBurnStock } = require('./controllers/inventoryController');
 
 const Inventory = require('./models/inventory');
-const Expense = require('./models/Expense');
-const PurchaseOrder = require('./models/PurchaseOrder');
+const Expense = require('./models/expense');
+const PurchaseOrder = require('./models/purchaseOrder');
 const { convertToBaseUnit } = require('./utils/unitConverter');
 
 const app = express();
