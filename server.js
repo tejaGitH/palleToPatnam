@@ -14,7 +14,7 @@ app.use(express.static('public'));
 
 // 1. Connect MongoDB
 // 1. Connect MongoDB
-const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://dbAdmin:dbAdmin@msmewebsitedb.a2hqi3q.mongodb.net/?appName=msmeWebsiteDb";
+const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://dbAdmin:dbAdmin@msmewebsitedb.a2hqi3q.mongodb.net/restaurant_db?retryWrites=true&w=majority&appName=msmeWebsiteDb";
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected to Atlas'))
