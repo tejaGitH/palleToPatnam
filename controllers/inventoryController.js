@@ -1,7 +1,7 @@
 // controllers/inventoryController.js
 // In controllers/inventoryController.js
 const Dish = require('../models/dish'); // matching exact file case
-const Inventory = require('../models/Inventory');
+const Inventory = require('../models/inventory');
 const { convertToBaseUnit } = require('../utils/unitConverter');
 
 exports.processBillAndBurnStock = async (orderedItems) => {
