@@ -1,6 +1,6 @@
 // seedData.js
 const mongoose = require('mongoose');
-const Dish = require('./models/Dish');
+const Dish = require('./models/dish');
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://dbAdmin:dbAdmin@msmewebsitedb.a2hqi3q.mongodb.net/restaurant_db?retryWrites=true&w=majority&appName=msmeWebsiteDb";
 

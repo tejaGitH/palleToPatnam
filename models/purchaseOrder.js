@@ -1,28 +1,24 @@
 // models/PurchaseOrder.js
 const mongoose = require('mongoose');
 
-const purchaseOrderItemSchema = new mongoose.Schema({
-  ingredient_name: { type: String, required: true },
-  quantity: { type: Number, required: true },
-  unit: { type: String, default: 'kg' }, // kg, ltr, units, grams, ml
-  unit_price: { type: Number, default: 0 },
-  total_price: { type: Number, default: 0 }
-});
-
 const purchaseOrderSchema = new mongoose.Schema({
-  po_number: { type: String, unique: true },
+  po_number: { type: String, required: true },
   vendor_name: { type: String, required: true },
-  vendor_contact: { type: String, default: '' },
-  items: [purchaseOrderItemSchema],
-  grand_total: { type: Number, default: 0 },
-  status: { 
-    type: String, 
-    enum: ['ORDERED', 'RECEIVED'], 
-    default: 'ORDERED' 
-  },
-  notes: { type: String, default: '' },
-  created_at: { type: Date, default: Date.now },
-  received_at: { type: Date }
-});
+  vendor_contact: String,
+  items: [
+    {
+      ingredient_name: { type: String, required: true },
+      quantity: { type: Number, required: true },
+      unit: { type: String, default: 'kg' },
+      unit_price: { type: Number, required: true },
+      total_price: { type: Number, required: true }
+    }
+  ],
+  grand_total: { type: Number, required: true },
+  status: { type: String, enum: ['ORDERED', 'RECEIVED', 'CANCELLED'], default: 'ORDERED' },
+  notes: String,
+  received_at: Date,
+  created_at: { type: Date, default: Date.now }
+}, { strict: false });
 
 module.exports = mongoose.model('PurchaseOrder', purchaseOrderSchema);
