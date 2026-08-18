@@ -2,14 +2,13 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-// In server.js
-const Dish = require('./models/dish'); // matching exact file case
 
 const { processBillAndBurnStock } = require('./controllers/inventoryController');
-
+const Dish = require('./models/dish');
 const Inventory = require('./models/inventory');
 const Expense = require('./models/expense');
 const PurchaseOrder = require('./models/purchaseOrder');
+const Wastage = require('./models/wastage');
 const { convertToBaseUnit } = require('./utils/unitConverter');
 
 const app = express();
@@ -17,14 +16,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// 1. Connect MongoDB Atlas
+// MongoDB Atlas Connection
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://dbAdmin:dbAdmin@msmewebsitedb.a2hqi3q.mongodb.net/restaurant_db?retryWrites=true&w=majority&appName=msmeWebsiteDb";
 
 mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected to Atlas'))
   .catch(err => console.error('❌ DB Error:', err.message));
 
-// 2. Order Schema (Petpooja Live Sales)
+// Order Schema
 const orderSchema = new mongoose.Schema({
   order_id: String,
   customer_invoice_id: String,
@@ -40,7 +39,7 @@ const orderSchema = new mongoose.Schema({
 });
 const Order = mongoose.model('Order', orderSchema);
 
-// Helper for date filtering
+// Timeframe Helper
 function getDateRange(timeframe, startDate, endDate) {
   const now = new Date();
   let start, end;
@@ -58,14 +57,13 @@ function getDateRange(timeframe, startDate, endDate) {
     start = new Date(startDate + "T00:00:00");
     end = new Date(endDate + "T23:59:59.999");
   } else {
-    // Default today
     start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
     end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   }
   return { start, end };
 }
 
-// --- DISH / RECIPE ROUTES ---
+// Dishes & Recipes
 app.post('/api/dishes', async (req, res) => {
   try {
     const { item_code, dish_name, category, price, recipe } = req.body;
@@ -74,7 +72,7 @@ app.post('/api/dishes', async (req, res) => {
       { dish_name, category, price: Number(price), recipe },
       { upsert: true, new: true }
     );
-    res.status(201).json({ status: "Success", message: "Recipe saved successfully!", dish: updatedDish });
+    res.status(201).json({ status: "Success", dish: updatedDish });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -89,7 +87,7 @@ app.get('/api/dishes', async (req, res) => {
   }
 });
 
-// --- PETPOOJA LIVE WEBHOOK / STOCK BURN ---
+// Petpooja Live Webhook & Simulator
 app.post('/api/webhook/order', async (req, res) => {
   try {
     const payload = req.body;
@@ -145,7 +143,7 @@ app.post('/api/webhook/order', async (req, res) => {
       if (formattedItems.length > 0) {
         await processBillAndBurnStock(formattedItems);
       }
-      return res.status(200).json({ status: "Success", message: "Manual order processed & stock burned!" });
+      return res.status(200).json({ status: "Success", message: "Order processed & stock burned!" });
     }
 
     res.status(400).json({ status: "Ignored", message: "Invalid payload format" });
@@ -155,9 +153,7 @@ app.post('/api/webhook/order', async (req, res) => {
   }
 });
 
-// --- PROCUREMENT & PURCHASE ORDERS ---
-
-// 1. Create Purchase Indent (Shop Order)
+// Purchases & Inwarding (With Weighted Average Costing)
 app.post('/api/purchases', async (req, res) => {
   try {
     const { vendor_name, vendor_contact, items, notes } = req.body;
@@ -165,7 +161,7 @@ app.post('/api/purchases', async (req, res) => {
     const po_number = `PO-${new Date().getFullYear()}-${(count + 1).toString().padStart(4, '0')}`;
 
     let grand_total = 0;
-    const computedItems = items.map(item => {
+    const computedItems = (items || []).map(item => {
       const total = (Number(item.quantity) || 0) * (Number(item.unit_price) || 0);
       grand_total += total;
       return {
@@ -188,36 +184,44 @@ app.post('/api/purchases', async (req, res) => {
     });
 
     await newPO.save();
-    res.status(201).json({ status: "Success", message: "Purchase order created!", purchaseOrder: newPO });
+    res.status(201).json({ status: "Success", purchaseOrder: newPO });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 2. Inward / Receive PO (Put to stock & log expense)
 app.post('/api/purchases/:id/inward', async (req, res) => {
   try {
     const po = await PurchaseOrder.findById(req.params.id);
     if (!po) return res.status(404).json({ error: "PO not found" });
-    if (po.status === 'RECEIVED') return res.status(400).json({ error: "Already inwarded into inventory" });
+    if (po.status === 'RECEIVED') return res.status(400).json({ error: "Already inwarded" });
 
-    // Inward each item
     for (const item of po.items) {
       const { baseQty, baseUnit } = convertToBaseUnit(item.quantity, item.unit);
-      const costPerBaseUnit = baseQty > 0 ? (item.total_price / baseQty) : 0;
+      const newCostPerBaseUnit = baseQty > 0 ? (item.total_price / baseQty) : 0;
+
+      const existing = await Inventory.findOne({ 
+        ingredient_name: new RegExp(`^${item.ingredient_name.trim()}$`, 'i') 
+      });
+
+      let finalCostPerBase = newCostPerBaseUnit;
+      if (existing && existing.current_stock > 0) {
+        const oldTotalVal = existing.current_stock * (existing.cost_per_unit || 0);
+        const newTotalVal = baseQty * newCostPerBaseUnit;
+        finalCostPerBase = (oldTotalVal + newTotalVal) / (existing.current_stock + baseQty);
+      }
 
       await Inventory.findOneAndUpdate(
         { ingredient_name: new RegExp(`^${item.ingredient_name.trim()}$`, 'i') },
         { 
           $inc: { current_stock: baseQty },
-          $set: { unit: baseUnit, cost_per_unit: costPerBaseUnit },
+          $set: { unit: baseUnit, cost_per_unit: Number(finalCostPerBase.toFixed(4)) },
           $setOnInsert: { ingredient_name: item.ingredient_name.trim() }
         },
         { upsert: true, new: true }
       );
     }
 
-    // Auto-log Expense for P&L
     const newExpense = new Expense({
       category: "Raw Materials",
       amount: po.grand_total,
@@ -231,23 +235,20 @@ app.post('/api/purchases/:id/inward', async (req, res) => {
     po.received_at = new Date();
     await po.save();
 
-    res.json({ status: "Success", message: "Stock inwarded and expense logged!" });
+    res.json({ status: "Success", message: "Stock inwarded with Weighted Average Cost!" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 3. Fetch POs with optional date filter
 app.get('/api/purchases', async (req, res) => {
   try {
     const { timeframe, startDate, endDate } = req.query;
     let filter = {};
-
     if (timeframe && timeframe !== 'all') {
       const { start, end } = getDateRange(timeframe, startDate, endDate);
       filter.created_at = { $gte: start, $lte: end };
     }
-
     const orders = await PurchaseOrder.find(filter).sort({ created_at: -1 });
     res.json(orders);
   } catch (error) {
@@ -255,7 +256,71 @@ app.get('/api/purchases', async (req, res) => {
   }
 });
 
-// 4. Financials & Analytics with timeframe filters
+// Wastage / Night Reconciliation
+app.post('/api/wastage', async (req, res) => {
+  try {
+    const { item_code, quantity, reason } = req.body;
+    const dish = await Dish.findOne({ item_code: String(item_code) });
+    if (!dish) return res.status(404).json({ error: "Dish not found" });
+
+    let totalLoss = 0;
+    const qty = Number(quantity) || 1;
+
+    for (const ing of dish.recipe) {
+      const nominalQty = ing.quantity * qty;
+      const yieldFactor = (ing.yield_percentage || 100) / 100;
+      const actualRawRequired = nominalQty / (yieldFactor > 0 ? yieldFactor : 1);
+
+      const { baseQty } = convertToBaseUnit(actualRawRequired, ing.unit);
+      
+      const inv = await Inventory.findOneAndUpdate(
+        { ingredient_name: new RegExp(`^${ing.ingredient_name.trim()}$`, 'i') },
+        { $inc: { current_stock: -baseQty } },
+        { new: true }
+      );
+
+      if (inv && inv.cost_per_unit) {
+        totalLoss += baseQty * inv.cost_per_unit;
+      }
+    }
+
+    const wastageEntry = new Wastage({
+      type: 'DISH',
+      item_code: dish.item_code,
+      item_name: dish.dish_name,
+      quantity: qty,
+      total_loss_cost: Number(totalLoss.toFixed(2)),
+      reason: reason || 'Unsold / Expired'
+    });
+    await wastageEntry.save();
+
+    res.status(201).json({ 
+      status: "Success", 
+      message: `Logged ${qty}x ${dish.dish_name} as waste. Stock adjusted!`, 
+      totalLoss: Number(totalLoss.toFixed(2)) 
+    });
+  } catch (error) {
+    console.error("Wastage Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/wastage', async (req, res) => {
+  try {
+    const { timeframe, startDate, endDate } = req.query;
+    let filter = {};
+    if (timeframe && timeframe !== 'all') {
+      const { start, end } = getDateRange(timeframe, startDate, endDate);
+      filter.date = { $gte: start, $lte: end };
+    }
+    const wastes = await Wastage.find(filter).sort({ date: -1 });
+    res.json(wastes);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Financials & Summary
 app.get('/api/financials', async (req, res) => {
   try {
     const { timeframe, startDate, endDate } = req.query;
@@ -264,27 +329,27 @@ app.get('/api/financials', async (req, res) => {
     const orders = await Order.find({ created_at: { $gte: start, $lte: end } });
     const expenses = await Expense.find({ date: { $gte: start, $lte: end } });
     const pos = await PurchaseOrder.find({ created_at: { $gte: start, $lte: end } });
+    const wastes = await Wastage.find({ date: { $gte: start, $lte: end } });
 
     const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
     const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     const totalPurchases = pos.reduce((sum, p) => sum + (p.grand_total || 0), 0);
+    const totalWastageLoss = wastes.reduce((sum, w) => sum + (w.total_loss_cost || 0), 0);
 
     res.json({
-      timeframe: timeframe || 'today',
-      startDate: start,
-      endDate: end,
       totalRevenue,
-      totalExpenses,
       totalPurchases,
+      totalExpenses,
+      totalWastageLoss,
       totalBills: orders.length,
-      netProfit: totalRevenue - totalExpenses
+      netProfit: totalRevenue - totalExpenses - totalWastageLoss
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// 5. Inventory
+// Live Inventory Balance
 app.get('/api/inventory', async (req, res) => {
   try {
     const stock = await Inventory.find({});

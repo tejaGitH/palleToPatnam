@@ -1,45 +1,30 @@
 // controllers/inventoryController.js
-// In controllers/inventoryController.js
-const Dish = require('../models/dish'); // matching exact file case
+const Dish = require('../models/dish');
 const Inventory = require('../models/inventory');
 const { convertToBaseUnit } = require('../utils/unitConverter');
 
-exports.processBillAndBurnStock = async (orderedItems) => {
-  try {
-    for (let item of orderedItems) {
-      // Find the dish recipe by item_code or dish_name
-      const dish = await Dish.findOne({
-        $or: [
-          { item_code: String(item.item_code) },
-          { dish_name: new RegExp(`^${item.item_name}$`, 'i') }
-        ]
-      });
+async function processBillAndBurnStock(items) {
+  for (const item of items) {
+    const dish = await Dish.findOne({ item_code: String(item.item_code) });
+    if (!dish || !dish.recipe || dish.recipe.length === 0) continue;
 
-      if (dish && dish.recipe && dish.recipe.length > 0) {
-        for (let ingredient of dish.recipe) {
-          const totalBurnQuantity = (ingredient.quantity * Number(item.qty)) || 0;
-          const { baseQty, baseUnit } = convertToBaseUnit(totalBurnQuantity, ingredient.unit);
+    const orderQty = Number(item.qty) || 1;
 
-          // Deducts stock from Atlas Inventory
-          await Inventory.updateOne(
-            { ingredient_name: new RegExp(`^${ingredient.ingredient_name.trim()}$`, 'i') },
-            { 
-              $inc: { current_stock: -baseQty },
-              $setOnInsert: { 
-                ingredient_name: ingredient.ingredient_name.trim(),
-                unit: baseUnit 
-              }
-            },
-            { upsert: true }
-          );
+    for (const ingredient of dish.recipe) {
+      const nominalQty = ingredient.quantity * orderQty;
+      // Compensate for yield loss (e.g. 200g meat / 0.8 yield = 250g uncleaned raw deducted)
+      const yieldFactor = (ingredient.yield_percentage || 100) / 100;
+      const actualRawRequired = nominalQty / (yieldFactor > 0 ? yieldFactor : 1);
 
-          console.log(`🔥 [STOCK BURN] Deducted ${baseQty}${baseUnit} of ${ingredient.ingredient_name} for order: ${dish.dish_name} (Qty: ${item.qty})`);
-        }
-      } else {
-        console.log(`⚠️ No recipe found for: ${item.item_name || item.item_code}`);
-      }
+      const { baseQty } = convertToBaseUnit(actualRawRequired, ingredient.unit);
+
+      await Inventory.findOneAndUpdate(
+        { ingredient_name: new RegExp(`^${ingredient.ingredient_name.trim()}$`, 'i') },
+        { $inc: { current_stock: -baseQty } },
+        { new: true }
+      );
     }
-  } catch (error) {
-    console.error('Error burning stock:', error);
   }
-};
+}
+
+module.exports = { processBillAndBurnStock };
