@@ -22,75 +22,77 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected to Atlas'))
   .catch(err => console.error('❌ DB Error:', err.message));
 
-// Order Schema with flexible timestamps
+// Order Schema
 const orderSchema = new mongoose.Schema({
   order_id: String,
-  customer_invoice_id: String,
+  customer_invoice_id: { type: String, required: true },
   rest_id: String,
   res_name: String,
   order_type: String,
-  order_from: String,
+  order_from: { type: String, default: "POS" },
   payment_type: String,
   total_amount: { type: Number, default: 0 },
   discount_total: { type: Number, default: 0 },
   items: Array,
   cogs_cost: { type: Number, default: 0 },
-  created_at: { type: Date, default: Date.now }
+  created_at: { type: Date, default: Date.now, index: true }
 }, { strict: false });
 
 const Order = mongoose.models.Order || mongoose.model('Order', orderSchema);
 
-// Precise IST Timezone Range Calculator
-function getDateRange(timeframe, startDate, endDate) {
+// Precise IST Timezone Date Range Helper
+function getISTDateRange(timeframe, customStart, customEnd) {
   const now = new Date();
-  const istOffset = 5.5 * 60 * 60 * 1000;
-  const istNow = new Date(now.getTime() + istOffset);
+  const istOffsetMinutes = 330;
+  const nowIST = new Date(now.getTime() + (istOffsetMinutes * 60000));
   
-  const y = istNow.getUTCFullYear();
-  const m = istNow.getUTCMonth();
-  const d = istNow.getUTCDate();
+  const y = nowIST.getUTCFullYear();
+  const m = nowIST.getUTCMonth();
+  const d = nowIST.getUTCDate();
 
-  let start, end;
+  let startIST, endIST;
 
   if (timeframe === 'today') {
-    start = new Date(Date.UTC(y, m, d, 0, 0, 0) - istOffset);
-    end = new Date(Date.UTC(y, m, d, 23, 59, 59, 999) - istOffset);
+    startIST = new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - (istOffsetMinutes * 60000));
+    endIST = new Date(Date.UTC(y, m, d, 23, 59, 59, 999) - (istOffsetMinutes * 60000));
   } else if (timeframe === 'yesterday') {
-    start = new Date(Date.UTC(y, m, d - 1, 0, 0, 0) - istOffset);
-    end = new Date(Date.UTC(y, m, d - 1, 23, 59, 59, 999) - istOffset);
+    startIST = new Date(Date.UTC(y, m, d - 1, 0, 0, 0, 0) - (istOffsetMinutes * 60000));
+    endIST = new Date(Date.UTC(y, m, d - 1, 23, 59, 59, 999) - (istOffsetMinutes * 60000));
   } else if (timeframe === 'week') {
-    start = new Date(Date.UTC(y, m, d - 6, 0, 0, 0) - istOffset);
-    end = new Date(Date.UTC(y, m, d, 23, 59, 59, 999) - istOffset);
+    startIST = new Date(Date.UTC(y, m, d - 6, 0, 0, 0, 0) - (istOffsetMinutes * 60000));
+    endIST = new Date(Date.UTC(y, m, d, 23, 59, 59, 999) - (istOffsetMinutes * 60000));
   } else if (timeframe === 'month') {
-    start = new Date(Date.UTC(y, m, d - 29, 0, 0, 0) - istOffset);
-    end = new Date(Date.UTC(y, m, d, 23, 59, 59, 999) - istOffset);
-  } else if (timeframe === 'custom' && startDate && endDate) {
-    const [sy, sm, sd] = startDate.split('-').map(Number);
-    const [ey, em, ed] = endDate.split('-').map(Number);
-    start = new Date(Date.UTC(sy, sm - 1, sd, 0, 0, 0) - istOffset);
-    end = new Date(Date.UTC(ey, em - 1, ed, 23, 59, 59, 999) - istOffset);
+    startIST = new Date(Date.UTC(y, m, d - 29, 0, 0, 0, 0) - (istOffsetMinutes * 60000));
+    endIST = new Date(Date.UTC(y, m, d, 23, 59, 59, 999) - (istOffsetMinutes * 60000));
+  } else if (timeframe === 'custom' && customStart && customEnd) {
+    const [sy, sm, sd] = customStart.split('-').map(Number);
+    const [ey, em, ed] = customEnd.split('-').map(Number);
+    startIST = new Date(Date.UTC(sy, sm - 1, sd, 0, 0, 0, 0) - (istOffsetMinutes * 60000));
+    endIST = new Date(Date.UTC(ey, em - 1, ed, 23, 59, 59, 999) - (istOffsetMinutes * 60000));
   } else {
-    start = new Date(0);
-    end = new Date(Date.UTC(y + 1, m, d) - istOffset);
+    startIST = new Date(0);
+    endIST = new Date(Date.UTC(y + 1, 11, 31, 23, 59, 59, 999));
   }
-  return { start, end };
+
+  return { start: startIST, end: endIST };
 }
 
 // ---------------- DISHES & RECIPES ----------------
 app.post('/api/dishes', async (req, res) => {
   try {
     const { item_code, dish_name, category, price, recipe } = req.body;
-    
     if (!item_code || !dish_name) {
       return res.status(400).json({ error: "Item Code and Dish Name are required." });
     }
 
-    const cleanRecipe = (recipe || []).map(r => ({
-      ingredient_name: String(r.ingredient_name || '').trim(),
-      quantity: Number(r.quantity) || 0,
-      unit: r.unit || 'grams',
-      yield_percentage: Number(r.yield_percentage) || 100
-    }));
+    const cleanRecipe = (Array.isArray(recipe) ? recipe : [])
+      .filter(r => r && String(r.ingredient_name || '').trim().length > 0)
+      .map(r => ({
+        ingredient_name: String(r.ingredient_name).trim(),
+        quantity: Number(r.quantity) || 0,
+        unit: r.unit || 'grams',
+        yield_percentage: Number(r.yield_percentage) || 100
+      }));
 
     const updatedDish = await Dish.findOneAndUpdate(
       { item_code: String(item_code).trim() },
@@ -104,7 +106,6 @@ app.post('/api/dishes', async (req, res) => {
     );
     res.status(201).json({ status: "Success", dish: updatedDish });
   } catch (error) {
-    console.error("Dish Save Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -114,12 +115,24 @@ app.get('/api/dishes', async (req, res) => {
     const dishes = await Dish.find({}).sort({ dish_name: 1 });
     res.json(dishes);
   } catch (error) {
-    console.error("Dish Fetch Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ---------------- ORDERS & BILL SIMULATOR (BULLETPROOF COGS) ----------------
+// ---------------- LIVE INVENTORY FETCH (CLEANED) ----------------
+app.get('/api/inventory', async (req, res) => {
+  try {
+    // Exclude invalid/undefined records from MongoDB
+    const stock = await Inventory.find({
+      ingredient_name: { $nin: [null, "", "undefined", "null"] }
+    }).sort({ ingredient_name: 1 });
+    res.json(stock);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ---------------- BILLING / ORDER PROCESSING ----------------
 app.post('/api/webhook/order', async (req, res) => {
   try {
     const payload = req.body;
@@ -132,13 +145,13 @@ app.post('/api/webhook/order', async (req, res) => {
       orderInfo = props.Order || {};
       const orderItems = props.OrderItem || [];
       formattedItems = orderItems.map(item => ({
-        item_code: String(item.itemcode || item.itemid || ''),
+        item_code: String(item.itemcode || item.itemid || '').trim(),
         item_name: item.name || 'Dish',
         qty: Number(item.quantity) || 1
       }));
     } else if (req.body.bill_number) {
       formattedItems = (req.body.items || []).map(i => ({
-        item_code: String(i.item_code || ''),
+        item_code: String(i.item_code || '').trim(),
         item_name: i.item_name || 'Dish',
         qty: Number(i.qty) || 1
       }));
@@ -153,15 +166,20 @@ app.post('/api/webhook/order', async (req, res) => {
       }
     }
 
-    // Safe COGS calculation with fallback
+    // 1. Deduct stock physically in MongoDB
+    if (formattedItems.length > 0) {
+      await processBillAndBurnStock(formattedItems);
+    }
+
+    // 2. Compute COGS using live Moving Average Cost
     let orderCOGS = 0;
     try {
       const dishes = await Dish.find({});
-      const inventories = await Inventory.find({});
+      const stock = await Inventory.find({});
       const invMap = {};
-      inventories.forEach(i => {
-        if (i && i.ingredient_name) {
-          invMap[i.ingredient_name.trim().toLowerCase()] = Number(i.cost_per_unit) || 0;
+      stock.forEach(s => {
+        if (s && s.ingredient_name) {
+          invMap[s.ingredient_name.trim().toLowerCase()] = Number(s.cost_per_unit) || 0;
         }
       });
 
@@ -169,36 +187,30 @@ app.post('/api/webhook/order', async (req, res) => {
         const dish = dishes.find(d => String(d.item_code).trim() === String(item.item_code).trim());
         if (dish && Array.isArray(dish.recipe)) {
           dish.recipe.forEach(rec => {
-            if (rec && rec.ingredient_name) {
-              const ingKey = rec.ingredient_name.trim().toLowerCase();
-              const nominal = (Number(rec.quantity) || 0) * (Number(item.qty) || 1);
-              const yieldFactor = (Number(rec.yield_percentage) || 100) / 100;
-              const actual = nominal / (yieldFactor > 0 ? yieldFactor : 1);
-              const { baseQty } = convertToBaseUnit(actual, rec.unit || 'grams');
-              const unitCost = invMap[ingKey] || 0;
-              orderCOGS += (baseQty * unitCost);
-            }
+            const ingKey = String(rec.ingredient_name || '').trim().toLowerCase();
+            const nominal = (Number(rec.quantity) || 0) * (Number(item.qty) || 1);
+            const yieldFactor = (Number(rec.yield_percentage) || 100) / 100;
+            const actual = nominal / (yieldFactor > 0 ? yieldFactor : 1);
+            const { baseQty } = convertToBaseUnit(actual, rec.unit || 'grams');
+            const unitCost = invMap[ingKey] || 0;
+            orderCOGS += (baseQty * unitCost);
           });
         }
       }
     } catch (cogsErr) {
-      console.warn("COGS calculation warning:", cogsErr.message);
+      console.warn("COGS Calculation Warning:", cogsErr.message);
     }
 
     const newOrder = new Order({
       customer_invoice_id: orderInfo.customer_invoice_id || `BILL-${Date.now()}`,
       total_amount: Number(orderInfo.total) || 0,
       discount_total: Number(orderInfo.discount_total) || 0,
-      order_from: orderInfo.order_from || "Petpooja",
+      order_from: orderInfo.order_from || "POS",
       items: formattedItems,
       cogs_cost: Number(orderCOGS.toFixed(2)) || 0,
       created_at: orderDate
     });
     await newOrder.save();
-
-    if (formattedItems.length > 0) {
-      await processBillAndBurnStock(formattedItems);
-    }
 
     return res.status(200).json({ status: "Success", message: "Order processed, stock burned & COGS recorded!" });
   } catch (error) {
@@ -207,7 +219,7 @@ app.post('/api/webhook/order', async (req, res) => {
   }
 });
 
-// ---------------- PURCHASES & INWARDS (Exact Moving WAC) ----------------
+// ---------------- PURCHASES & INWARDS (EXACT WAC FORMULA) ----------------
 app.post('/api/purchases', async (req, res) => {
   try {
     const { vendor_name, vendor_contact, items, notes, purchase_date } = req.body;
@@ -215,17 +227,19 @@ app.post('/api/purchases', async (req, res) => {
     const po_number = `PO-${new Date().getFullYear()}-${(count + 1).toString().padStart(4, '0')}`;
 
     let grand_total = 0;
-    const computedItems = (items || []).map(item => {
-      const total = (Number(item.quantity) || 0) * (Number(item.unit_price) || 0);
-      grand_total += total;
-      return {
-        ingredient_name: item.ingredient_name.trim(),
-        quantity: Number(item.quantity),
-        unit: item.unit || 'kg',
-        unit_price: Number(item.unit_price) || 0,
-        total_price: total
-      };
-    });
+    const computedItems = (items || [])
+      .filter(item => item && String(item.ingredient_name || '').trim().length > 0)
+      .map(item => {
+        const total = (Number(item.quantity) || 0) * (Number(item.unit_price) || 0);
+        grand_total += total;
+        return {
+          ingredient_name: String(item.ingredient_name).trim(),
+          quantity: Number(item.quantity),
+          unit: item.unit || 'kg',
+          unit_price: Number(item.unit_price) || 0,
+          total_price: total
+        };
+      });
 
     let targetDate = new Date();
     if (purchase_date) {
@@ -235,7 +249,7 @@ app.post('/api/purchases', async (req, res) => {
 
     const newPO = new PurchaseOrder({
       po_number,
-      vendor_name,
+      vendor_name: vendor_name.trim(),
       vendor_contact,
       items: computedItems,
       grand_total,
@@ -260,35 +274,38 @@ app.post('/api/purchases/:id/inward', async (req, res) => {
     const inwardDate = po.created_at || new Date();
 
     for (const item of po.items) {
+      const cleanIngName = String(item.ingredient_name || '').trim();
+      if (!cleanIngName) continue;
+
       const { baseQty, baseUnit } = convertToBaseUnit(item.quantity, item.unit);
       const newCostPerBaseUnit = baseQty > 0 ? (item.total_price / baseQty) : 0;
 
       const existing = await Inventory.findOne({ 
-        ingredient_name: new RegExp(`^${item.ingredient_name.trim()}$`, 'i') 
+        ingredient_name: new RegExp(`^${cleanIngName}$`, 'i') 
       });
 
       let finalCostPerBase = newCostPerBaseUnit;
-      let lastPurchasedPrice = Number(item.unit_price);
 
-      // (Physical Remaining Stock * Old Cost + New Purchased Qty * New Cost) / (Remaining Stock + New Qty)
-      if (existing && existing.current_stock > 0) {
-        const oldTotalVal = existing.current_stock * (existing.cost_per_unit || 0);
+      // Exact Moving Weighted Average Cost Formula:
+      // (Remaining Physical Stock * Old Cost + New Purchased Qty * New Cost) / (Remaining Stock + New Qty)
+      if (existing && existing.current_stock > 0 && existing.cost_per_unit > 0) {
+        const oldTotalVal = existing.current_stock * existing.cost_per_unit;
         const newTotalVal = baseQty * newCostPerBaseUnit;
         finalCostPerBase = (oldTotalVal + newTotalVal) / (existing.current_stock + baseQty);
       }
 
       await Inventory.findOneAndUpdate(
-        { ingredient_name: new RegExp(`^${item.ingredient_name.trim()}$`, 'i') },
+        { ingredient_name: new RegExp(`^${cleanIngName}$`, 'i') },
         { 
           $inc: { current_stock: baseQty },
           $set: { 
             unit: baseUnit, 
             cost_per_unit: Number(finalCostPerBase.toFixed(6)),
-            last_purchased_rate: lastPurchasedPrice,
+            last_purchased_rate: Number(item.unit_price) || 0,
             last_purchased_unit: item.unit,
             last_purchased_date: inwardDate
           },
-          $setOnInsert: { ingredient_name: item.ingredient_name.trim() }
+          $setOnInsert: { ingredient_name: cleanIngName }
         },
         { upsert: true, new: true }
       );
@@ -318,7 +335,7 @@ app.get('/api/purchases', async (req, res) => {
     const { timeframe, startDate, endDate } = req.query;
     let filter = {};
     if (timeframe && timeframe !== 'all') {
-      const { start, end } = getDateRange(timeframe, startDate, endDate);
+      const { start, end } = getISTDateRange(timeframe, startDate, endDate);
       filter.$or = [
         { created_at: { $gte: start, $lte: end } },
         { createdAt: { $gte: start, $lte: end } }
@@ -335,21 +352,22 @@ app.get('/api/purchases', async (req, res) => {
 app.post('/api/wastage', async (req, res) => {
   try {
     const { item_code, quantity, reason, waste_date } = req.body;
-    const dish = await Dish.findOne({ item_code: String(item_code) });
+    const dish = await Dish.findOne({ item_code: String(item_code).trim() });
     if (!dish) return res.status(404).json({ error: "Dish not found" });
 
     let totalLoss = 0;
     const qty = Number(quantity) || 1;
 
     for (const ing of (dish.recipe || [])) {
-      const nominalQty = ing.quantity * qty;
-      const yieldFactor = (ing.yield_percentage || 100) / 100;
+      const nominalQty = (Number(ing.quantity) || 0) * qty;
+      const yieldFactor = (Number(ing.yield_percentage) || 100) / 100;
       const actualRawRequired = nominalQty / (yieldFactor > 0 ? yieldFactor : 1);
 
-      const { baseQty } = convertToBaseUnit(actualRawRequired, ing.unit);
+      const { baseQty } = convertToBaseUnit(actualRawRequired, ing.unit || 'grams');
+      const cleanIngName = String(ing.ingredient_name || '').trim();
       
       const inv = await Inventory.findOneAndUpdate(
-        { ingredient_name: new RegExp(`^${ing.ingredient_name.trim()}$`, 'i') },
+        { ingredient_name: new RegExp(`^${cleanIngName}$`, 'i') },
         { $inc: { current_stock: -baseQty } },
         { new: true }
       );
@@ -359,7 +377,7 @@ app.post('/api/wastage', async (req, res) => {
       }
     }
 
-    const lostSellingRevenue = (dish.price || 0) * qty;
+    const lostSellingRevenue = (Number(dish.price) || 0) * qty;
     const effectiveDate = waste_date ? new Date(waste_date) : new Date();
 
     const wastageEntry = new Wastage({
@@ -368,7 +386,7 @@ app.post('/api/wastage', async (req, res) => {
       item_name: dish.dish_name,
       quantity: qty,
       total_loss_cost: Number(totalLoss.toFixed(2)),
-      potential_revenue_lost: lostSellingRevenue,
+      potential_revenue_lost: Number(lostSellingRevenue.toFixed(2)),
       reason: reason || 'Unsold / Expired',
       date: effectiveDate
     });
@@ -390,7 +408,7 @@ app.get('/api/wastage', async (req, res) => {
     const { timeframe, startDate, endDate } = req.query;
     let filter = {};
     if (timeframe && timeframe !== 'all') {
-      const { start, end } = getDateRange(timeframe, startDate, endDate);
+      const { start, end } = getISTDateRange(timeframe, startDate, endDate);
       filter.date = { $gte: start, $lte: end };
     }
     const wastes = await Wastage.find(filter).sort({ date: -1 });
@@ -400,13 +418,12 @@ app.get('/api/wastage', async (req, res) => {
   }
 });
 
-// ---------------- FINANCIALS (ROBUST DATE MATCHING) ----------------
+// ---------------- FINANCIALS ----------------
 app.get('/api/financials', async (req, res) => {
   try {
     const { timeframe, startDate, endDate } = req.query;
-    const { start, end } = getDateRange(timeframe, startDate, endDate);
+    const { start, end } = getISTDateRange(timeframe, startDate, endDate);
 
-    // Dual-field query ensures orders are always found
     const orders = await Order.find({
       $or: [
         { created_at: { $gte: start, $lte: end } },
@@ -417,22 +434,26 @@ app.get('/api/financials', async (req, res) => {
     const pos = await PurchaseOrder.find({
       $or: [
         { created_at: { $gte: start, $lte: end } },
-        { createdAt: { $gte: start, $lte: end } }
+        { createdAt: { $gte: start, $lte: end } },
+        { received_at: { $gte: start, $lte: end } }
       ],
       status: 'RECEIVED'
     });
 
     const wastes = await Wastage.find({ date: { $gte: start, $lte: end } });
-    const stock = await Inventory.find({});
+    const stock = await Inventory.find({ ingredient_name: { $nin: [null, "", "undefined", "null"] } });
     const dishes = await Dish.find({});
 
     const totalRevenue = orders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
     const totalPurchases = pos.reduce((sum, p) => sum + (Number(p.grand_total) || 0), 0);
     const totalWastageCost = wastes.reduce((sum, w) => sum + (Number(w.total_loss_cost) || 0), 0);
 
-    // Compute COGS: Use stored cogs_cost or dynamically calculate
     const invMap = {};
-    stock.forEach(i => invMap[i.ingredient_name.trim().toLowerCase()] = i.cost_per_unit || 0);
+    stock.forEach(i => {
+      if (i && i.ingredient_name) {
+        invMap[i.ingredient_name.trim().toLowerCase()] = Number(i.cost_per_unit) || 0;
+      }
+    });
 
     let totalCOGS = 0;
     orders.forEach(o => {
@@ -456,7 +477,6 @@ app.get('/api/financials', async (req, res) => {
       }
     });
 
-    // Inventory asset valuation (current physical stock * moving average cost)
     const inventoryAssetValue = stock.reduce((sum, item) => {
       const val = (item.current_stock > 0 ? item.current_stock : 0) * (item.cost_per_unit || 0);
       return sum + val;
@@ -485,7 +505,7 @@ app.get('/api/financials', async (req, res) => {
       totalWasteEvents: wastes.length
     });
   } catch (error) {
-    console.error("Financials Error:", error);
+    console.error("Financials API Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -494,9 +514,9 @@ app.get('/api/financials', async (req, res) => {
 app.get('/api/inventory/ledger', async (req, res) => {
   try {
     const { timeframe, startDate, endDate } = req.query;
-    const { start, end } = getDateRange(timeframe, startDate, endDate);
+    const { start, end } = getISTDateRange(timeframe, startDate, endDate);
 
-    const inventoryItems = await Inventory.find({});
+    const inventoryItems = await Inventory.find({ ingredient_name: { $nin: [null, "", "undefined", "null"] } });
     
     const posInRange = await PurchaseOrder.find({
       $or: [
@@ -518,19 +538,21 @@ app.get('/api/inventory/ledger', async (req, res) => {
     const dishes = await Dish.find({});
 
     const dishMap = {};
-    dishes.forEach(d => dishMap[d.item_code] = d);
+    dishes.forEach(d => dishMap[String(d.item_code).trim()] = d);
 
     const ingredientNames = new Set(inventoryItems.map(i => i.ingredient_name));
-    posInRange.forEach(po => po.items.forEach(pi => ingredientNames.add(pi.ingredient_name)));
+    posInRange.forEach(po => (po.items || []).forEach(pi => {
+      if (pi && pi.ingredient_name) ingredientNames.add(pi.ingredient_name);
+    }));
 
     const ledger = Array.from(ingredientNames).map(name => {
-      const ingNameLower = name.trim().toLowerCase();
-      const invMatch = inventoryItems.find(i => i.ingredient_name.trim().toLowerCase() === ingNameLower);
+      const ingNameLower = String(name || '').trim().toLowerCase();
+      const invMatch = inventoryItems.find(i => String(i.ingredient_name).trim().toLowerCase() === ingNameLower);
 
       let inwardedBase = 0;
       posInRange.forEach(po => {
-        po.items.forEach(item => {
-          if (item.ingredient_name.trim().toLowerCase() === ingNameLower) {
+        (po.items || []).forEach(item => {
+          if (String(item.ingredient_name).trim().toLowerCase() === ingNameLower) {
             const { baseQty } = convertToBaseUnit(item.quantity, item.unit);
             inwardedBase += baseQty;
           }
@@ -540,10 +562,10 @@ app.get('/api/inventory/ledger', async (req, res) => {
       let soldBase = 0;
       ordersInRange.forEach(ord => {
         (ord.items || []).forEach(ordItem => {
-          const dish = dishMap[ordItem.item_code];
+          const dish = dishMap[String(ordItem.item_code).trim()];
           if (dish && Array.isArray(dish.recipe)) {
             dish.recipe.forEach(rec => {
-              if (rec.ingredient_name.trim().toLowerCase() === ingNameLower) {
+              if (String(rec.ingredient_name).trim().toLowerCase() === ingNameLower) {
                 const nominal = (Number(rec.quantity) || 0) * (Number(ordItem.qty) || 1);
                 const yieldFactor = (Number(rec.yield_percentage) || 100) / 100;
                 const actual = nominal / (yieldFactor > 0 ? yieldFactor : 1);
@@ -557,10 +579,10 @@ app.get('/api/inventory/ledger', async (req, res) => {
 
       let wastedBase = 0;
       wastesInRange.forEach(w => {
-        const dish = dishMap[w.item_code];
+        const dish = dishMap[String(w.item_code).trim()];
         if (dish && Array.isArray(dish.recipe)) {
           dish.recipe.forEach(rec => {
-            if (rec.ingredient_name.trim().toLowerCase() === ingNameLower) {
+            if (String(rec.ingredient_name).trim().toLowerCase() === ingNameLower) {
               const nominal = (Number(rec.quantity) || 0) * (Number(w.quantity) || 1);
               const yieldFactor = (Number(rec.yield_percentage) || 100) / 100;
               const actual = nominal / (yieldFactor > 0 ? yieldFactor : 1);
@@ -577,7 +599,7 @@ app.get('/api/inventory/ledger', async (req, res) => {
         inwarded_in_period: inwardedBase,
         sold_in_period: soldBase,
         wasted_in_period: wastedBase,
-        current_physical_stock: invMatch ? invMatch.current_stock : inwardedBase,
+        current_physical_stock: invMatch ? invMatch.current_stock : 0,
         cost_per_unit: invMatch ? invMatch.cost_per_unit : 0
       };
     });
@@ -588,19 +610,15 @@ app.get('/api/inventory/ledger', async (req, res) => {
   }
 });
 
-// ---------------- PRICE TRENDS ----------------
+// ---------------- PRICE TRENDS (STRICT WAC RETRIEVAL) ----------------
 app.get('/api/inventory/price-trends', async (req, res) => {
   try {
-    const stock = await Inventory.find({});
+    const stock = await Inventory.find({ ingredient_name: { $nin: [null, "", "undefined", "null"] } });
     const allPOs = await PurchaseOrder.find({ status: 'RECEIVED' }).sort({ created_at: -1, createdAt: -1 });
 
-    const ingredientNames = new Set(stock.map(i => i.ingredient_name));
-    allPOs.forEach(po => po.items.forEach(pi => ingredientNames.add(pi.ingredient_name)));
-
-    const trends = Array.from(ingredientNames).map(name => {
-      const ingNameLower = name.trim().toLowerCase();
-      const invMatch = stock.find(i => i.ingredient_name.trim().toLowerCase() === ingNameLower);
-      const baseUnit = invMatch ? invMatch.unit : 'grams';
+    const trends = stock.map(inv => {
+      const ingNameLower = String(inv.ingredient_name || '').trim().toLowerCase();
+      const baseUnit = inv.unit || 'grams';
       let humanUnit = 'kg';
       let multiplier = 1000;
 
@@ -614,10 +632,10 @@ app.get('/api/inventory/price-trends', async (req, res) => {
 
       const itemPurchases = [];
       allPOs.forEach(po => {
-        po.items.forEach(pi => {
-          if (pi.ingredient_name.trim().toLowerCase() === ingNameLower) {
+        (po.items || []).forEach(pi => {
+          if (String(pi.ingredient_name).trim().toLowerCase() === ingNameLower) {
             itemPurchases.push({
-              rate: pi.unit_price,
+              rate: Number(pi.unit_price) || 0,
               unit: pi.unit,
               date: po.created_at || po.createdAt,
               po_number: po.po_number
@@ -629,12 +647,13 @@ app.get('/api/inventory/price-trends', async (req, res) => {
       const latestPurchase = itemPurchases[0] || null;
       const previousPurchase = itemPurchases[1] || null;
 
-      const movingAvgRate = invMatch ? Number(((invMatch.cost_per_unit || 0) * multiplier).toFixed(2)) : 0;
+      // Moving Average is strictly read from database cost_per_unit
+      const movingAvgRate = Number(((inv.cost_per_unit || 0) * multiplier).toFixed(2));
       const latestRate = latestPurchase ? Number(latestPurchase.rate) : movingAvgRate;
       const prevRate = previousPurchase ? Number(previousPurchase.rate) : latestRate;
 
       return {
-        ingredient_name: name,
+        ingredient_name: inv.ingredient_name,
         human_unit: humanUnit,
         moving_avg_rate: movingAvgRate,
         latest_purchase_rate: latestRate,
@@ -651,16 +670,7 @@ app.get('/api/inventory/price-trends', async (req, res) => {
   }
 });
 
-app.get('/api/inventory', async (req, res) => {
-  try {
-    const stock = await Inventory.find({});
-    res.json(stock);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ---------------- BACKUP & HARD RESET ----------------
+// ---------------- BACKUP & HARD RESET (WITH CLEANUP) ----------------
 app.get('/api/admin/backup', async (req, res) => {
   try {
     const backupData = {
@@ -698,7 +708,7 @@ app.post('/api/admin/reset', async (req, res) => {
 
     res.json({
       status: "Success",
-      message: `Hard Reset complete. Operational data cleared.${includeDishes ? ' Recipes deleted.' : ' Recipes preserved.'}`
+      message: `Hard Reset complete. All operational data and invalid items cleared.${includeDishes ? ' Recipes deleted.' : ' Recipes preserved.'}`
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

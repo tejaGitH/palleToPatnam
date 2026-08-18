@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Palle To Patnam — Restaurant Intelligence & Control Tower</title>
+  <title>Palle To Patnam — Production Control Tower</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <style>
     * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -27,7 +27,7 @@
     .filter-btn { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; color: #475569; }
     .filter-btn.active { background: #0f172a; color: white; border-color: #0f172a; }
 
-    /* What-If & Profit Cards */
+    /* P&L Cards */
     .what-if-banner { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 16px; margin-bottom: 20px; }
     .what-if-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-top: 10px; }
     .what-if-card { background: white; padding: 14px; border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
@@ -67,24 +67,22 @@
     
     .item-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 28px; gap: 8px; align-items: center; margin-bottom: 8px; }
     .recipe-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 28px; gap: 8px; align-items: center; margin-bottom: 8px; }
-
-    #pdf-slip { display: none; background: white; padding: 25px; color: #111; }
   </style>
 </head>
 <body>
 
   <div class="header">
     <div>
-      <h1>Palle To Patnam — Restaurant Control Tower</h1>
-      <p>Precision Stock, Price Trends, Real COGS Profit & Moving Weighted Average Cost</p>
+      <h1>Palle To Patnam — Restaurant Intelligence Control Tower</h1>
+      <p>Precision Stock, Real COGS Accounting & Moving Weighted Average Cost</p>
     </div>
     <button class="btn" onclick="refreshDashboard()">🔄 Refresh Live Data</button>
   </div>
 
   <!-- Navigation Tabs -->
   <div class="nav-tabs">
-    <button class="tab-btn active" onclick="openTab('tab-pnl')">📊 Daily P&L & Profit Analytics</button>
-    <button class="tab-btn" onclick="openTab('tab-inventory')">📦 Stock Ledger (Date Filtered)</button>
+    <button class="tab-btn active" onclick="openTab('tab-pnl')">📊 Daily P&L & Profit Breakdown</button>
+    <button class="tab-btn" onclick="openTab('tab-inventory')">📦 Live Stock & Ledger</button>
     <button class="tab-btn" onclick="openTab('tab-trends')">📈 Rate Trends (₹/kg Comparison)</button>
     <button class="tab-btn" onclick="openTab('tab-purchases')">🛒 Purchases & Inwards</button>
     <button class="tab-btn" onclick="openTab('tab-closing')">🌙 Shift Closing / Waste Log</button>
@@ -136,7 +134,7 @@
         <div class="what-if-card green">
           <div class="what-if-label">3. Real Business Profit</div>
           <div class="what-if-value" id="stat-real-profit">₹0</div>
-          <div class="what-if-sub">Sales Revenue − Used Food Cost (COGS)</div>
+          <div class="what-if-sub">Sales Revenue − COGS − Wastage Loss</div>
         </div>
 
         <div class="what-if-card purple">
@@ -190,12 +188,32 @@
     </div>
   </div>
 
-  <!-- ================= TAB 2: STOCK LEDGER (DATE FILTERED) ================= -->
+  <!-- ================= TAB 2: LIVE STOCK & LEDGER ================= -->
   <div id="tab-inventory" class="tab-panel">
+    <!-- Live Physical Stock Table -->
+    <div class="card" style="margin-bottom: 20px;">
+      <h3>📦 Live Kitchen Raw Material Balance (Current Physical Stock)</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Raw Ingredient</th>
+            <th>Base Unit</th>
+            <th>Available Physical Balance</th>
+            <th>Average Cost</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="stock-table">
+          <tr><td colspan="5">Loading live stock...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Movement Ledger Table -->
     <div class="card">
       <h3>
-        📦 Kitchen Stock Movement & Ledger (<span class="current-range-label">Today</span>)
-        <span style="font-size:12px; color:#64748b; font-weight:normal;">Reflects inwards, sales & waste for selected dates</span>
+        📑 Kitchen Stock Movement & Ledger (<span class="current-range-label">Today</span>)
+        <span style="font-size:12px; color:#64748b; font-weight:normal;">Inwarded, sold & wasted for selected period</span>
       </h3>
       <table>
         <thead>
@@ -216,7 +234,7 @@
     </div>
   </div>
 
-  <!-- ================= TAB 3: RATE TRENDS (YESTERDAY VS TODAY) ================= -->
+  <!-- ================= TAB 3: RATE TRENDS ================= -->
   <div id="tab-trends" class="tab-panel">
     <div class="card">
       <h3>
@@ -433,8 +451,6 @@
     </div>
   </div>
 
-  <div id="pdf-slip"></div>
-
   <script>
     let currentTimeframe = 'today';
     let customStartDate = '';
@@ -537,7 +553,7 @@
     function formatStockDisplay(qty, unit) {
       if (unit === 'grams' && Math.abs(qty) >= 1000) return `${(qty / 1000).toFixed(2)} kg`;
       if (unit === 'ml' && Math.abs(qty) >= 1000) return `${(qty / 1000).toFixed(2)} L`;
-      return `${qty} ${unit || 'units'}`;
+      return `${Number(qty || 0).toFixed(2)} ${unit || 'units'}`;
     }
 
     function updateOrderPricePreview() {
@@ -550,9 +566,12 @@
       }
     }
 
-    // 1. Order Simulator (Custom Date)
+    // 1. Order Simulator
     async function punchCustomerOrder(e) {
       e.preventDefault();
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+
       const sel = document.getElementById('order-dish-select');
       const item_code = sel.value;
       const item_name = sel.options[sel.selectedIndex].text.split(' - ')[0];
@@ -560,7 +579,10 @@
       const total_amount = Number(document.getElementById('order-total').value);
       const order_date = document.getElementById('order-date').value;
 
-      if(!item_code) return alert("Select a dish first!");
+      if(!item_code) {
+        if (submitBtn) submitBtn.disabled = false;
+        return alert("Select a dish first!");
+      }
 
       try {
         const res = await fetch('/api/webhook/order', {
@@ -574,14 +596,16 @@
           })
         });
         const data = await res.json();
-        document.getElementById('order-msg').innerText = `✅ Order Punched! Auto-deducted recipe stock for ${qty}x ${item_name}`;
+        document.getElementById('order-msg').innerText = `✅ Order Punched! Deducted stock for ${qty}x ${item_name}`;
         refreshDashboard();
       } catch (err) {
         alert('Error: ' + err.message);
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
       }
     }
 
-    // 2. Wastage Logger (Custom Date)
+    // 2. Wastage Logger
     async function logNightWastage(e) {
       e.preventDefault();
       const item_code = document.getElementById('waste-dish-select').value;
@@ -610,7 +634,7 @@
       }
     }
 
-    // 3. Purchase Indent (Custom Date)
+    // 3. Purchase Indent
     async function createPurchaseOrder(e) {
       e.preventDefault();
       const vendor_name = document.getElementById('po-vendor').value;
@@ -646,7 +670,6 @@
       }
     }
 
-    // Inward PO
     async function inwardPO(id) {
       if (!confirm("Confirm inwarding this purchase into live stock?")) return;
       try {
@@ -723,7 +746,6 @@
         refreshDashboard();
       } catch (err) {
         alert("Save Error: " + err.message);
-        console.error("Save Recipe Error:", err);
       }
       return false;
     }
@@ -791,10 +813,6 @@
         });
       } catch (err) {
         console.error("fetchDishes error:", err);
-        const tbody = document.getElementById('dishes-table');
-        if (tbody) {
-          tbody.innerHTML = `<tr><td colspan="4" style="color:#ef4444;">Error loading menu: ${err.message}</td></tr>`;
-        }
       }
     }
 
@@ -807,7 +825,7 @@
         const tbody = document.getElementById('po-table');
         tbody.innerHTML = '';
 
-        if (!allPOs.length) {
+        if (!Array.isArray(allPOs) || !allPOs.length) {
           tbody.innerHTML = '<tr><td colspan="6">No purchase orders found for this timeframe.</td></tr>';
           return;
         }
@@ -819,7 +837,7 @@
               <td><strong>${po.po_number}</strong></td>
               <td>${po.vendor_name}</td>
               <td>${new Date(po.created_at).toLocaleDateString()}</td>
-              <td><strong>₹${po.grand_total.toLocaleString()}</strong></td>
+              <td><strong>₹${Number(po.grand_total || 0).toLocaleString()}</strong></td>
               <td><span class="badge ${isReceived ? 'badge-received' : 'badge-ordered'}">${isReceived ? 'INWARDED' : 'PENDING'}</span></td>
               <td>
                 ${!isReceived ? `<button class="btn btn-sm btn-success" onclick="inwardPO('${po._id}')">📥 Inward</button>` : '<span>Completed</span>'}
@@ -841,7 +859,7 @@
         const tbody = document.getElementById('wastage-table');
         tbody.innerHTML = '';
 
-        if (!wastes.length) {
+        if (!Array.isArray(wastes) || !wastes.length) {
           tbody.innerHTML = '<tr><td colspan="5">No wastage recorded for this period.</td></tr>';
           return;
         }
@@ -850,9 +868,9 @@
           tbody.innerHTML += `
             <tr>
               <td><strong>${w.item_name}</strong></td>
-              <td>${w.quantity} ${w.unit}</td>
+              <td>${w.quantity} portions</td>
               <td><span class="badge badge-ordered">${w.reason}</span></td>
-              <td style="color:#ef4444; font-weight:bold;">₹${(w.total_loss_cost || 0).toLocaleString()}</td>
+              <td style="color:#ef4444; font-weight:bold;">₹${(Number(w.total_loss_cost) || 0).toLocaleString()}</td>
               <td>${new Date(w.date).toLocaleString()}</td>
             </tr>
           `;
@@ -880,6 +898,50 @@
       }
     }
 
+    async function fetchPhysicalStock() {
+      try {
+        const res = await fetch('/api/inventory');
+        const data = await res.json();
+        const tbody = document.getElementById('stock-table');
+        tbody.innerHTML = '';
+
+        if (!Array.isArray(data) || !data.length) {
+          tbody.innerHTML = '<tr><td colspan="5">No physical inventory items found. Inward a PO to add stock.</td></tr>';
+          return;
+        }
+
+        data.forEach(item => {
+          const displayQty = formatStockDisplay(item.current_stock, item.unit);
+          const isNegative = item.current_stock < 0;
+          const isLow = item.current_stock >= 0 && item.current_stock <= 500;
+
+          let badgeClass = 'badge-received';
+          let statusText = 'Optimal';
+          if (isNegative) {
+            badgeClass = 'badge-danger';
+            statusText = 'Deficit';
+          } else if (isLow) {
+            badgeClass = 'badge-ordered';
+            statusText = 'Low Stock';
+          }
+
+          let rateDisplay = `₹${((item.cost_per_unit || 0) * (item.unit === 'grams' || item.unit === 'ml' ? 1000 : 1)).toFixed(2)} / ${item.unit === 'grams' ? 'kg' : (item.unit === 'ml' ? 'L' : 'unit')}`;
+
+          tbody.innerHTML += `
+            <tr>
+              <td><strong>${item.ingredient_name}</strong></td>
+              <td>${item.unit || 'grams'}</td>
+              <td style="font-weight: 800; font-size: 14px; color: ${isNegative ? '#dc2626' : '#0f172a'};">${displayQty}</td>
+              <td>${rateDisplay}</td>
+              <td><span class="badge ${badgeClass}">${statusText}</span></td>
+            </tr>
+          `;
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
     async function fetchLedger() {
       try {
         let url = `/api/inventory/ledger?timeframe=${currentTimeframe}`;
@@ -889,7 +951,7 @@
         const tbody = document.getElementById('ledger-table');
         tbody.innerHTML = '';
 
-        if (!ledger.length) {
+        if (!Array.isArray(ledger) || !ledger.length) {
           tbody.innerHTML = '<tr><td colspan="7">No stock movements found.</td></tr>';
           return;
         }
@@ -926,7 +988,7 @@
         const tbody = document.getElementById('trends-table');
         tbody.innerHTML = '';
 
-        if (!trends.length) {
+        if (!Array.isArray(trends) || !trends.length) {
           tbody.innerHTML = '<tr><td colspan="7">No purchase records available.</td></tr>';
           return;
         }
@@ -944,10 +1006,10 @@
             <tr>
               <td><strong>${item.ingredient_name}</strong></td>
               <td>${item.human_unit}</td>
-              <td style="font-weight:bold; font-size:14px; color:#2563eb;">₹${item.moving_avg_rate.toLocaleString()} / ${item.human_unit}</td>
-              <td style="font-weight:bold;">₹${item.latest_purchase_rate.toLocaleString()} / ${item.human_unit}</td>
+              <td style="font-weight:bold; font-size:14px; color:#2563eb;">₹${Number(item.moving_avg_rate || 0).toLocaleString()} / ${item.human_unit}</td>
+              <td style="font-weight:bold;">₹${Number(item.latest_purchase_rate || 0).toLocaleString()} / ${item.human_unit}</td>
               <td>${item.latest_purchase_date ? new Date(item.latest_purchase_date).toLocaleDateString() : 'N/A'}</td>
-              <td>₹${item.previous_purchase_rate.toLocaleString()} / ${item.human_unit}</td>
+              <td>₹${Number(item.previous_purchase_rate || 0).toLocaleString()} / ${item.human_unit}</td>
               <td>${indicator}</td>
             </tr>
           `;
@@ -959,6 +1021,7 @@
 
     function refreshDashboard() {
       fetchFinancials();
+      fetchPhysicalStock();
       fetchLedger();
       fetchTrends();
       fetchDishes();

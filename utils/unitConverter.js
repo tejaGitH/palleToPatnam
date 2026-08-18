@@ -1,31 +1,30 @@
 // utils/unitConverter.js
-function convertToBaseUnit(qty, unit) {
-  const cleanUnit = (unit || '').toLowerCase().trim();
-  const numQty = Number(qty) || 0;
+function convertToBaseUnit(quantity, unit) {
+  const q = Number(quantity) || 0;
+  const u = String(unit || 'grams').toLowerCase().trim();
 
-  switch (cleanUnit) {
-    case 'kg':
-    case 'kgs':
-    case 'kilogram':
-      return { baseQty: numQty * 1000, baseUnit: 'grams' };
-    case 'ltr':
-    case 'liter':
-    case 'litre':
-      return { baseQty: numQty * 1000, baseUnit: 'ml' };
-    case 'gm':
-    case 'gms':
-    case 'grams':
-    case 'g':
-      return { baseQty: numQty, baseUnit: 'grams' };
-    case 'ml':
-      return { baseQty: numQty, baseUnit: 'ml' };
-    case 'units':
-    case 'pcs':
-    case 'pieces':
-    case 'unit':
-    default:
-      return { baseQty: numQty, baseUnit: 'units' };
+  // Weight Units -> Base: grams
+  if (['kg', 'kgs', 'kilogram', 'kilograms'].includes(u)) {
+    return { baseQty: q * 1000, baseUnit: 'grams' };
   }
+  if (['gms', 'gm', 'g', 'gram', 'grams'].includes(u)) {
+    return { baseQty: q, baseUnit: 'grams' };
+  }
+
+  // Volume Units -> Base: ml
+  if (['ltr', 'liter', 'liters', 'l'].includes(u)) {
+    return { baseQty: q * 1000, baseUnit: 'ml' };
+  }
+  if (['ml', 'milliliter', 'milliliters'].includes(u)) {
+    return { baseQty: q, baseUnit: 'ml' };
+  }
+
+  // Count Units -> Base: units
+  if (['units', 'unit', 'nos', 'piece', 'pieces', 'pcs', 'plate', 'plates'].includes(u)) {
+    return { baseQty: q, baseUnit: 'units' };
+  }
+
+  return { baseQty: q, baseUnit: u || 'grams' };
 }
 
 module.exports = { convertToBaseUnit };
