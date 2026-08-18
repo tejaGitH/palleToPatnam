@@ -22,7 +22,7 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB Connected to Atlas'))
   .catch(err => console.error('❌ DB Error:', err.message));
 
-// Order Schema
+// Order Schema with flexible timestamps
 const orderSchema = new mongoose.Schema({
   order_id: String,
   customer_invoice_id: String,
@@ -31,12 +31,14 @@ const orderSchema = new mongoose.Schema({
   order_type: String,
   order_from: String,
   payment_type: String,
-  total_amount: Number,
-  discount_total: Number,
+  total_amount: { type: Number, default: 0 },
+  discount_total: { type: Number, default: 0 },
   items: Array,
+  cogs_cost: { type: Number, default: 0 },
   created_at: { type: Date, default: Date.now }
 }, { strict: false });
-const Order = mongoose.model('Order', orderSchema);
+
+const Order = mongoose.models.Order || mongoose.model('Order', orderSchema);
 
 // Precise IST Timezone Range Calculator
 function getDateRange(timeframe, startDate, endDate) {
@@ -74,99 +76,138 @@ function getDateRange(timeframe, startDate, endDate) {
   return { start, end };
 }
 
-// Dishes
+// ---------------- DISHES & RECIPES ----------------
 app.post('/api/dishes', async (req, res) => {
   try {
     const { item_code, dish_name, category, price, recipe } = req.body;
+    
+    if (!item_code || !dish_name) {
+      return res.status(400).json({ error: "Item Code and Dish Name are required." });
+    }
+
+    const cleanRecipe = (recipe || []).map(r => ({
+      ingredient_name: String(r.ingredient_name || '').trim(),
+      quantity: Number(r.quantity) || 0,
+      unit: r.unit || 'grams',
+      yield_percentage: Number(r.yield_percentage) || 100
+    }));
+
     const updatedDish = await Dish.findOneAndUpdate(
-      { item_code: String(item_code) },
-      { dish_name, category, price: Number(price), recipe },
-      { upsert: true, new: true }
+      { item_code: String(item_code).trim() },
+      { 
+        dish_name: String(dish_name).trim(), 
+        category: category || 'General', 
+        price: Number(price) || 0, 
+        recipe: cleanRecipe 
+      },
+      { upsert: true, new: true, runValidators: false }
     );
     res.status(201).json({ status: "Success", dish: updatedDish });
   } catch (error) {
+    console.error("Dish Save Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 app.get('/api/dishes', async (req, res) => {
   try {
-    const dishes = await Dish.find({});
+    const dishes = await Dish.find({}).sort({ dish_name: 1 });
     res.json(dishes);
   } catch (error) {
+    console.error("Dish Fetch Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Petpooja Webhook & Bill Simulator
+// ---------------- ORDERS & BILL SIMULATOR (BULLETPROOF COGS) ----------------
 app.post('/api/webhook/order', async (req, res) => {
   try {
     const payload = req.body;
+    let formattedItems = [];
+    let orderInfo = {};
+    let orderDate = new Date();
 
     if (payload.event === "orderdetails" && payload.properties) {
       const props = payload.properties;
-      const orderInfo = props.Order || {};
-      const restInfo = props.Restaurant || {};
+      orderInfo = props.Order || {};
       const orderItems = props.OrderItem || [];
-
-      const formattedItems = orderItems.map(item => ({
-        item_code: String(item.itemcode || item.itemid),
-        item_name: item.name,
+      formattedItems = orderItems.map(item => ({
+        item_code: String(item.itemcode || item.itemid || ''),
+        item_name: item.name || 'Dish',
         qty: Number(item.quantity) || 1
       }));
-
-      const newOrder = new Order({
-        order_id: orderInfo.orderID,
-        customer_invoice_id: orderInfo.customer_invoice_id,
-        rest_id: restInfo.restID,
-        res_name: restInfo.res_name,
-        order_type: orderInfo.order_type,
-        order_from: orderInfo.order_from,
-        payment_type: orderInfo.payment_type,
-        total_amount: orderInfo.total,
-        discount_total: orderInfo.discount_total || 0,
-        items: formattedItems
-      });
-      await newOrder.save();
-
-      if (formattedItems.length > 0) {
-        await processBillAndBurnStock(formattedItems);
-      }
-
-      return res.status(200).json({ status: "Success", message: "Petpooja order processed & stock burned!" });
-    } 
-    else if (req.body.bill_number) {
-      const formattedItems = (req.body.items || []).map(i => ({
-        item_code: String(i.item_code),
-        item_name: i.item_name,
+    } else if (req.body.bill_number) {
+      formattedItems = (req.body.items || []).map(i => ({
+        item_code: String(i.item_code || ''),
+        item_name: i.item_name || 'Dish',
         qty: Number(i.qty) || 1
       }));
-
-      const orderDate = req.body.order_date ? new Date(req.body.order_date) : new Date();
-
-      const mockOrder = new Order({
+      orderInfo = {
         customer_invoice_id: req.body.bill_number,
-        total_amount: req.body.total_amount,
-        discount_total: req.body.discount || 0,
-        order_from: "Manual POS Test",
-        items: formattedItems,
-        created_at: orderDate
-      });
-      await mockOrder.save();
-
-      if (formattedItems.length > 0) {
-        await processBillAndBurnStock(formattedItems);
+        total: Number(req.body.total_amount) || 0,
+        discount_total: Number(req.body.discount) || 0,
+        order_from: "Manual POS Test"
+      };
+      if (req.body.order_date) {
+        orderDate = new Date(req.body.order_date);
       }
-      return res.status(200).json({ status: "Success", message: "Order processed & stock burned!" });
     }
 
-    res.status(400).json({ status: "Ignored", message: "Invalid payload format" });
+    // Safe COGS calculation with fallback
+    let orderCOGS = 0;
+    try {
+      const dishes = await Dish.find({});
+      const inventories = await Inventory.find({});
+      const invMap = {};
+      inventories.forEach(i => {
+        if (i && i.ingredient_name) {
+          invMap[i.ingredient_name.trim().toLowerCase()] = Number(i.cost_per_unit) || 0;
+        }
+      });
+
+      for (const item of formattedItems) {
+        const dish = dishes.find(d => String(d.item_code).trim() === String(item.item_code).trim());
+        if (dish && Array.isArray(dish.recipe)) {
+          dish.recipe.forEach(rec => {
+            if (rec && rec.ingredient_name) {
+              const ingKey = rec.ingredient_name.trim().toLowerCase();
+              const nominal = (Number(rec.quantity) || 0) * (Number(item.qty) || 1);
+              const yieldFactor = (Number(rec.yield_percentage) || 100) / 100;
+              const actual = nominal / (yieldFactor > 0 ? yieldFactor : 1);
+              const { baseQty } = convertToBaseUnit(actual, rec.unit || 'grams');
+              const unitCost = invMap[ingKey] || 0;
+              orderCOGS += (baseQty * unitCost);
+            }
+          });
+        }
+      }
+    } catch (cogsErr) {
+      console.warn("COGS calculation warning:", cogsErr.message);
+    }
+
+    const newOrder = new Order({
+      customer_invoice_id: orderInfo.customer_invoice_id || `BILL-${Date.now()}`,
+      total_amount: Number(orderInfo.total) || 0,
+      discount_total: Number(orderInfo.discount_total) || 0,
+      order_from: orderInfo.order_from || "Petpooja",
+      items: formattedItems,
+      cogs_cost: Number(orderCOGS.toFixed(2)) || 0,
+      created_at: orderDate
+    });
+    await newOrder.save();
+
+    if (formattedItems.length > 0) {
+      await processBillAndBurnStock(formattedItems);
+    }
+
+    return res.status(200).json({ status: "Success", message: "Order processed, stock burned & COGS recorded!" });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('Webhook Error:', error);
+    res.status(500).json({ status: "Error", message: error.message });
   }
 });
 
-// Purchases & Inwarding (With Date Support)
+// ---------------- PURCHASES & INWARDS (Exact Moving WAC) ----------------
 app.post('/api/purchases', async (req, res) => {
   try {
     const { vendor_name, vendor_contact, items, notes, purchase_date } = req.body;
@@ -229,6 +270,7 @@ app.post('/api/purchases/:id/inward', async (req, res) => {
       let finalCostPerBase = newCostPerBaseUnit;
       let lastPurchasedPrice = Number(item.unit_price);
 
+      // (Physical Remaining Stock * Old Cost + New Purchased Qty * New Cost) / (Remaining Stock + New Qty)
       if (existing && existing.current_stock > 0) {
         const oldTotalVal = existing.current_stock * (existing.cost_per_unit || 0);
         const newTotalVal = baseQty * newCostPerBaseUnit;
@@ -241,7 +283,7 @@ app.post('/api/purchases/:id/inward', async (req, res) => {
           $inc: { current_stock: baseQty },
           $set: { 
             unit: baseUnit, 
-            cost_per_unit: Number(finalCostPerBase.toFixed(4)),
+            cost_per_unit: Number(finalCostPerBase.toFixed(6)),
             last_purchased_rate: lastPurchasedPrice,
             last_purchased_unit: item.unit,
             last_purchased_date: inwardDate
@@ -289,7 +331,7 @@ app.get('/api/purchases', async (req, res) => {
   }
 });
 
-// Wastage / Shift Closing
+// ---------------- WASTAGE ----------------
 app.post('/api/wastage', async (req, res) => {
   try {
     const { item_code, quantity, reason, waste_date } = req.body;
@@ -299,7 +341,7 @@ app.post('/api/wastage', async (req, res) => {
     let totalLoss = 0;
     const qty = Number(quantity) || 1;
 
-    for (const ing of dish.recipe) {
+    for (const ing of (dish.recipe || [])) {
       const nominalQty = ing.quantity * qty;
       const yieldFactor = (ing.yield_percentage || 100) / 100;
       const actualRawRequired = nominalQty / (yieldFactor > 0 ? yieldFactor : 1);
@@ -358,14 +400,20 @@ app.get('/api/wastage', async (req, res) => {
   }
 });
 
-// Financials
+// ---------------- FINANCIALS (ROBUST DATE MATCHING) ----------------
 app.get('/api/financials', async (req, res) => {
   try {
     const { timeframe, startDate, endDate } = req.query;
     const { start, end } = getDateRange(timeframe, startDate, endDate);
 
-    const orders = await Order.find({ created_at: { $gte: start, $lte: end } });
-    const expenses = await Expense.find({ date: { $gte: start, $lte: end } });
+    // Dual-field query ensures orders are always found
+    const orders = await Order.find({
+      $or: [
+        { created_at: { $gte: start, $lte: end } },
+        { createdAt: { $gte: start, $lte: end } }
+      ]
+    });
+
     const pos = await PurchaseOrder.find({
       $or: [
         { created_at: { $gte: start, $lte: end } },
@@ -373,40 +421,76 @@ app.get('/api/financials', async (req, res) => {
       ],
       status: 'RECEIVED'
     });
-    const wastes = await Wastage.find({ date: { $gte: start, $lte: end } });
 
-    const totalRevenue = orders.reduce((sum, o) => sum + (o.total_amount || 0), 0);
-    const totalPurchases = pos.reduce((sum, p) => sum + (p.grand_total || 0), 0);
-    const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
-    const totalWastageCost = wastes.reduce((sum, w) => sum + (w.total_loss_cost || 0), 0);
-    
+    const wastes = await Wastage.find({ date: { $gte: start, $lte: end } });
+    const stock = await Inventory.find({});
+    const dishes = await Dish.find({});
+
+    const totalRevenue = orders.reduce((sum, o) => sum + (Number(o.total_amount) || 0), 0);
+    const totalPurchases = pos.reduce((sum, p) => sum + (Number(p.grand_total) || 0), 0);
+    const totalWastageCost = wastes.reduce((sum, w) => sum + (Number(w.total_loss_cost) || 0), 0);
+
+    // Compute COGS: Use stored cogs_cost or dynamically calculate
+    const invMap = {};
+    stock.forEach(i => invMap[i.ingredient_name.trim().toLowerCase()] = i.cost_per_unit || 0);
+
+    let totalCOGS = 0;
+    orders.forEach(o => {
+      if (o.cogs_cost && o.cogs_cost > 0) {
+        totalCOGS += o.cogs_cost;
+      } else if (Array.isArray(o.items)) {
+        o.items.forEach(item => {
+          const dish = dishes.find(d => String(d.item_code).trim() === String(item.item_code).trim());
+          if (dish && Array.isArray(dish.recipe)) {
+            dish.recipe.forEach(rec => {
+              const ingKey = String(rec.ingredient_name || '').trim().toLowerCase();
+              const nominal = (Number(rec.quantity) || 0) * (Number(item.qty) || 1);
+              const yieldFactor = (Number(rec.yield_percentage) || 100) / 100;
+              const actual = nominal / (yieldFactor > 0 ? yieldFactor : 1);
+              const { baseQty } = convertToBaseUnit(actual, rec.unit || 'grams');
+              const unitCost = invMap[ingKey] || 0;
+              totalCOGS += (baseQty * unitCost);
+            });
+          }
+        });
+      }
+    });
+
+    // Inventory asset valuation (current physical stock * moving average cost)
+    const inventoryAssetValue = stock.reduce((sum, item) => {
+      const val = (item.current_stock > 0 ? item.current_stock : 0) * (item.cost_per_unit || 0);
+      return sum + val;
+    }, 0);
+
     const potentialWastageSales = wastes.reduce((sum, w) => {
       return sum + (w.potential_revenue_lost || (w.total_loss_cost * 2.5));
     }, 0);
 
     const potentialMaxRevenue = totalRevenue + potentialWastageSales;
-    const actualNetProfit = totalRevenue - totalExpenses - totalWastageCost;
-    const potentialMaxProfit = potentialMaxRevenue - totalExpenses;
+    const realBusinessProfit = totalRevenue - totalCOGS - totalWastageCost;
+    const netCashFlowProfit = totalRevenue - totalPurchases;
 
     res.json({
       timeframe: timeframe || 'today',
-      totalRevenue,
-      totalPurchases,
-      totalExpenses,
-      totalWastageCost,
-      potentialWastageSales,
-      potentialMaxRevenue,
-      actualNetProfit,
-      potentialMaxProfit,
+      totalRevenue: Number(totalRevenue.toFixed(2)),
+      totalPurchases: Number(totalPurchases.toFixed(2)),
+      totalCOGS: Number(totalCOGS.toFixed(2)),
+      totalWastageCost: Number(totalWastageCost.toFixed(2)),
+      inventoryAssetValue: Number(inventoryAssetValue.toFixed(2)),
+      potentialWastageSales: Number(potentialWastageSales.toFixed(2)),
+      potentialMaxRevenue: Number(potentialMaxRevenue.toFixed(2)),
+      realBusinessProfit: Number(realBusinessProfit.toFixed(2)),
+      netCashFlowProfit: Number(netCashFlowProfit.toFixed(2)),
       totalBills: orders.length,
       totalWasteEvents: wastes.length
     });
   } catch (error) {
+    console.error("Financials Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Robust Date-Filtered Stock Ledger
+// ---------------- STOCK LEDGER ----------------
 app.get('/api/inventory/ledger', async (req, res) => {
   try {
     const { timeframe, startDate, endDate } = req.query;
@@ -414,7 +498,6 @@ app.get('/api/inventory/ledger', async (req, res) => {
 
     const inventoryItems = await Inventory.find({});
     
-    // Find all POs in range with dual-field fallback
     const posInRange = await PurchaseOrder.find({
       $or: [
         { created_at: { $gte: start, $lte: end } },
@@ -424,14 +507,19 @@ app.get('/api/inventory/ledger', async (req, res) => {
       status: 'RECEIVED'
     });
 
-    const ordersInRange = await Order.find({ created_at: { $gte: start, $lte: end } });
+    const ordersInRange = await Order.find({
+      $or: [
+        { created_at: { $gte: start, $lte: end } },
+        { createdAt: { $gte: start, $lte: end } }
+      ]
+    });
+
     const wastesInRange = await Wastage.find({ date: { $gte: start, $lte: end } });
     const dishes = await Dish.find({});
 
     const dishMap = {};
     dishes.forEach(d => dishMap[d.item_code] = d);
 
-    // Collect all ingredient names
     const ingredientNames = new Set(inventoryItems.map(i => i.ingredient_name));
     posInRange.forEach(po => po.items.forEach(pi => ingredientNames.add(pi.ingredient_name)));
 
@@ -439,7 +527,6 @@ app.get('/api/inventory/ledger', async (req, res) => {
       const ingNameLower = name.trim().toLowerCase();
       const invMatch = inventoryItems.find(i => i.ingredient_name.trim().toLowerCase() === ingNameLower);
 
-      // Inwarded
       let inwardedBase = 0;
       posInRange.forEach(po => {
         po.items.forEach(item => {
@@ -450,18 +537,17 @@ app.get('/api/inventory/ledger', async (req, res) => {
         });
       });
 
-      // Sold
       let soldBase = 0;
       ordersInRange.forEach(ord => {
-        ord.items.forEach(ordItem => {
+        (ord.items || []).forEach(ordItem => {
           const dish = dishMap[ordItem.item_code];
-          if (dish && dish.recipe) {
+          if (dish && Array.isArray(dish.recipe)) {
             dish.recipe.forEach(rec => {
               if (rec.ingredient_name.trim().toLowerCase() === ingNameLower) {
-                const nominal = rec.quantity * (ordItem.qty || 1);
-                const yieldFactor = (rec.yield_percentage || 100) / 100;
+                const nominal = (Number(rec.quantity) || 0) * (Number(ordItem.qty) || 1);
+                const yieldFactor = (Number(rec.yield_percentage) || 100) / 100;
                 const actual = nominal / (yieldFactor > 0 ? yieldFactor : 1);
-                const { baseQty } = convertToBaseUnit(actual, rec.unit);
+                const { baseQty } = convertToBaseUnit(actual, rec.unit || 'grams');
                 soldBase += baseQty;
               }
             });
@@ -469,17 +555,16 @@ app.get('/api/inventory/ledger', async (req, res) => {
         });
       });
 
-      // Wasted
       let wastedBase = 0;
       wastesInRange.forEach(w => {
         const dish = dishMap[w.item_code];
-        if (dish && dish.recipe) {
+        if (dish && Array.isArray(dish.recipe)) {
           dish.recipe.forEach(rec => {
             if (rec.ingredient_name.trim().toLowerCase() === ingNameLower) {
-              const nominal = rec.quantity * (w.quantity || 1);
-              const yieldFactor = (rec.yield_percentage || 100) / 100;
+              const nominal = (Number(rec.quantity) || 0) * (Number(w.quantity) || 1);
+              const yieldFactor = (Number(rec.yield_percentage) || 100) / 100;
               const actual = nominal / (yieldFactor > 0 ? yieldFactor : 1);
-              const { baseQty } = convertToBaseUnit(actual, rec.unit);
+              const { baseQty } = convertToBaseUnit(actual, rec.unit || 'grams');
               wastedBase += baseQty;
             }
           });
@@ -503,7 +588,7 @@ app.get('/api/inventory/ledger', async (req, res) => {
   }
 });
 
-// Price Trends Engine
+// ---------------- PRICE TRENDS ----------------
 app.get('/api/inventory/price-trends', async (req, res) => {
   try {
     const stock = await Inventory.find({});
@@ -544,9 +629,9 @@ app.get('/api/inventory/price-trends', async (req, res) => {
       const latestPurchase = itemPurchases[0] || null;
       const previousPurchase = itemPurchases[1] || null;
 
-      const latestRate = latestPurchase ? Number(latestPurchase.rate) : Number(((invMatch?.cost_per_unit || 0) * multiplier).toFixed(2));
+      const movingAvgRate = invMatch ? Number(((invMatch.cost_per_unit || 0) * multiplier).toFixed(2)) : 0;
+      const latestRate = latestPurchase ? Number(latestPurchase.rate) : movingAvgRate;
       const prevRate = previousPurchase ? Number(previousPurchase.rate) : latestRate;
-      const movingAvgRate = Number(((invMatch?.cost_per_unit || 0) * multiplier).toFixed(2));
 
       return {
         ingredient_name: name,
@@ -575,7 +660,7 @@ app.get('/api/inventory', async (req, res) => {
   }
 });
 
-// Database Backup & Reset
+// ---------------- BACKUP & HARD RESET ----------------
 app.get('/api/admin/backup', async (req, res) => {
   try {
     const backupData = {

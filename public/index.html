@@ -27,13 +27,14 @@
     .filter-btn { background: #f1f5f9; border: 1px solid #cbd5e1; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; color: #475569; }
     .filter-btn.active { background: #0f172a; color: white; border-color: #0f172a; }
 
-    /* What-If Cards */
+    /* What-If & Profit Cards */
     .what-if-banner { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 16px; margin-bottom: 20px; }
     .what-if-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-top: 10px; }
     .what-if-card { background: white; padding: 14px; border-radius: 8px; border-left: 4px solid #3b82f6; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
     .what-if-card.green { border-left-color: #10b981; }
     .what-if-card.red { border-left-color: #ef4444; }
     .what-if-card.amber { border-left-color: #f59e0b; }
+    .what-if-card.purple { border-left-color: #8b5cf6; }
     .what-if-label { font-size: 11px; text-transform: uppercase; font-weight: 700; color: #64748b; }
     .what-if-value { font-size: 22px; font-weight: 800; margin-top: 4px; color: #0f172a; }
     .what-if-sub { font-size: 11px; color: #64748b; margin-top: 2px; }
@@ -75,16 +76,16 @@
   <div class="header">
     <div>
       <h1>Palle To Patnam — Restaurant Control Tower</h1>
-      <p>Precision Stock, Price Trends, What-If Profit Analytics & Historical Ledger</p>
+      <p>Precision Stock, Price Trends, Real COGS Profit & Moving Weighted Average Cost</p>
     </div>
     <button class="btn" onclick="refreshDashboard()">🔄 Refresh Live Data</button>
   </div>
 
   <!-- Navigation Tabs -->
   <div class="nav-tabs">
-    <button class="tab-btn active" onclick="openTab('tab-pnl')">📊 Daily P&L & Wastage Impact</button>
+    <button class="tab-btn active" onclick="openTab('tab-pnl')">📊 Daily P&L & Profit Analytics</button>
     <button class="tab-btn" onclick="openTab('tab-inventory')">📦 Stock Ledger (Date Filtered)</button>
-    <button class="tab-btn" onclick="openTab('tab-trends')">📈 Rate Trends (Yesterday vs Today)</button>
+    <button class="tab-btn" onclick="openTab('tab-trends')">📈 Rate Trends (₹/kg Comparison)</button>
     <button class="tab-btn" onclick="openTab('tab-purchases')">🛒 Purchases & Inwards</button>
     <button class="tab-btn" onclick="openTab('tab-closing')">🌙 Shift Closing / Waste Log</button>
     <button class="tab-btn" onclick="openTab('tab-recipes')">🍲 Menu BOM & Recipes</button>
@@ -111,49 +112,49 @@
     </div>
   </div>
 
-  <!-- ================= TAB 1: P&L AND WHAT-IF ================= -->
+  <!-- ================= TAB 1: P&L AND PROFIT ANALYTICS ================= -->
   <div id="tab-pnl" class="tab-panel active">
     <div class="what-if-banner">
       <div style="display:flex; justify-content:space-between; align-items:center;">
-        <strong style="color:#1e40af; font-size:14px;">💡 Actual Financials vs. Potential Zero-Wastage Scenario (<span class="current-range-label">Today</span>)</strong>
-        <span style="font-size:11px; background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:4px; font-weight:bold;">Live Calculation</span>
+        <strong style="color:#1e40af; font-size:14px;">💡 Live Financial Health & Profit Breakdown (<span class="current-range-label">Today</span>)</strong>
+        <span style="font-size:11px; background:#dbeafe; color:#1e40af; padding:2px 8px; border-radius:4px; font-weight:bold;">Real COGS vs Cash Flow</span>
       </div>
 
       <div class="what-if-grid">
         <div class="what-if-card green">
-          <div class="what-if-label">1. Actual Realized Sales</div>
+          <div class="what-if-label">1. Total Sales Revenue</div>
           <div class="what-if-value" id="stat-revenue">₹0</div>
-          <div class="what-if-sub">Billed orders through Petpooja POS</div>
+          <div class="what-if-sub">Billed orders through POS</div>
         </div>
 
         <div class="what-if-card amber">
-          <div class="what-if-label">2. Lost Sales Opportunity (Waste)</div>
-          <div class="what-if-value" id="stat-potential-waste">₹0</div>
-          <div class="what-if-sub">Revenue lost if unsold food had sold</div>
-        </div>
-
-        <div class="what-if-card">
-          <div class="what-if-label">3. Max Potential Sales (100% Sold)</div>
-          <div class="what-if-value" id="stat-max-revenue">₹0</div>
-          <div class="what-if-sub">Actual Sales + Wasted Opportunity</div>
-        </div>
-
-        <div class="what-if-card red">
-          <div class="what-if-label">4. Direct Food Waste Cost</div>
-          <div class="what-if-value" id="stat-wastage-cost">₹0</div>
-          <div class="what-if-sub">Raw ingredients cost of discarded plates</div>
+          <div class="what-if-label">2. Used Food Cost (COGS)</div>
+          <div class="what-if-value" id="stat-cogs">₹0</div>
+          <div class="what-if-sub">Only ingredients burned for sold plates</div>
         </div>
 
         <div class="what-if-card green">
-          <div class="what-if-label">5. Actual Net Operational Margin</div>
-          <div class="what-if-value" id="stat-actual-profit">₹0</div>
-          <div class="what-if-sub">Revenue − (Purchases + Waste Loss)</div>
+          <div class="what-if-label">3. Real Business Profit</div>
+          <div class="what-if-value" id="stat-real-profit">₹0</div>
+          <div class="what-if-sub">Sales Revenue − Used Food Cost (COGS)</div>
+        </div>
+
+        <div class="what-if-card purple">
+          <div class="what-if-label">4. Remaining Inventory Asset</div>
+          <div class="what-if-value" id="stat-asset-val">₹0</div>
+          <div class="what-if-sub">Physical stock value left in kitchen</div>
         </div>
 
         <div class="what-if-card">
-          <div class="what-if-label">6. Potential Profit (Zero Waste)</div>
-          <div class="what-if-value" id="stat-max-profit">₹0</div>
-          <div class="what-if-sub">Profit if 100% prepared food sold</div>
+          <div class="what-if-label">5. Net Cash Flow in Hand</div>
+          <div class="what-if-value" id="stat-cash-profit">₹0</div>
+          <div class="what-if-sub">Sales Revenue − Total Purchases Bought</div>
+        </div>
+
+        <div class="what-if-card red">
+          <div class="what-if-label">6. Food Wastage Loss</div>
+          <div class="what-if-value" id="stat-wastage-cost">₹0</div>
+          <div class="what-if-sub">Unsold discarded portions cost</div>
         </div>
       </div>
     </div>
@@ -162,7 +163,7 @@
     <div class="card">
       <h3>
         🧾 Quick POS Customer Bill Simulator
-        <span style="font-size:11px; color:#10b981; font-weight:bold;">[Live Stock Burn]</span>
+        <span style="font-size:11px; color:#10b981; font-weight:bold;">[Live Stock Burn & COGS]</span>
       </h3>
       <form id="order-form" onsubmit="punchCustomerOrder(event)" style="display:grid; grid-template-columns: 2fr 1fr 1fr 1.2fr 1fr; gap:10px; align-items:end;">
         <div>
@@ -220,17 +221,17 @@
     <div class="card">
       <h3>
         📈 Raw Material Rate Comparison (Price Fluctuations)
-        <span style="font-size:12px; color:#64748b; font-weight:normal;">Compares Latest Purchase Rate vs. Previous Rate in ₹/kg or ₹/L</span>
+        <span style="font-size:12px; color:#64748b; font-weight:normal;">Compares Latest Purchase Rate vs. True Moving Average Rate in ₹/kg or ₹/L</span>
       </h3>
       <table>
         <thead>
           <tr>
             <th>Raw Ingredient</th>
             <th>Unit</th>
+            <th>True Moving Avg Rate (WAC)</th>
             <th>Latest Purchase Rate</th>
             <th>Latest Purchase Date</th>
             <th>Previous Purchase Rate</th>
-            <th>Moving Avg Cost</th>
             <th>Price Change Comparison</th>
           </tr>
         </thead>
@@ -464,6 +465,8 @@
 
       const clickedBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick').includes(tabId));
       if (clickedBtn) clickedBtn.classList.add('active');
+
+      refreshDashboard();
     }
 
     function setTimeframe(tf) {
@@ -658,11 +661,25 @@
 
     // Save Dish Recipe
     async function saveDishRecipe(e) {
-      e.preventDefault();
-      const item_code = document.getElementById('dish-code').value;
-      const dish_name = document.getElementById('dish-name').value;
-      const category = document.getElementById('dish-category').value;
-      const price = Number(document.getElementById('dish-price').value);
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      const codeEl = document.getElementById('dish-code');
+      const nameEl = document.getElementById('dish-name');
+      const catEl = document.getElementById('dish-category');
+      const priceEl = document.getElementById('dish-price');
+
+      const item_code = codeEl ? codeEl.value.trim() : '';
+      const dish_name = nameEl ? nameEl.value.trim() : '';
+      const category = catEl ? catEl.value.trim() : 'General';
+      const price = priceEl ? Number(priceEl.value) || 0 : 0;
+
+      if (!item_code || !dish_name) {
+        alert("Please enter both Item Code and Dish Name.");
+        return false;
+      }
 
       const ings = document.querySelectorAll('.rec-ing');
       const qtys = document.querySelectorAll('.rec-qty');
@@ -671,12 +688,20 @@
 
       const recipe = [];
       for (let i = 0; i < ings.length; i++) {
-        recipe.push({
-          ingredient_name: ings[i].value.trim(),
-          quantity: Number(qtys[i].value),
-          unit: units[i].value,
-          yield_percentage: Number(yields[i].value) || 100
-        });
+        const ingName = ings[i].value.trim();
+        if (ingName) {
+          recipe.push({
+            ingredient_name: ingName,
+            quantity: Number(qtys[i]?.value) || 0,
+            unit: units[i]?.value || 'grams',
+            yield_percentage: Number(yields[i]?.value) || 100
+          });
+        }
+      }
+
+      if (recipe.length === 0) {
+        alert("Please add at least one ingredient to the recipe BOM.");
+        return false;
       }
 
       try {
@@ -685,13 +710,22 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ item_code, dish_name, category, price, recipe })
         });
-        await res.json();
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || "Failed to save recipe");
+        }
+
+        alert(`✅ Recipe for "${dish_name}" saved successfully!`);
         document.getElementById('recipe-form').reset();
         toggleRecipeForm();
         refreshDashboard();
       } catch (err) {
-        alert('Error: ' + err.message);
+        alert("Save Error: " + err.message);
+        console.error("Save Recipe Error:", err);
       }
+      return false;
     }
 
     async function executeHardReset() {
@@ -720,6 +754,7 @@
     async function fetchDishes() {
       try {
         const res = await fetch('/api/dishes');
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         menuDishes = await res.json();
         
         const tbody = document.getElementById('dishes-table');
@@ -730,13 +765,22 @@
         orderSelect.innerHTML = '<option value="">-- Choose Dish --</option>';
         wasteSelect.innerHTML = '<option value="">-- Select Dish --</option>';
 
+        if (!Array.isArray(menuDishes) || menuDishes.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#64748b;">No dishes created yet. Click "+ New Recipe" above to add one!</td></tr>';
+          return;
+        }
+
         menuDishes.forEach(d => {
-          const bom = d.recipe.map(r => `${r.ingredient_name} (${r.quantity}${r.unit} @ ${r.yield_percentage || 100}% yield)`).join(', ');
+          const recipeList = Array.isArray(d.recipe) ? d.recipe : [];
+          const bom = recipeList.length > 0 
+            ? recipeList.map(r => `${r.ingredient_name} (${r.quantity}${r.unit || 'g'} @ ${r.yield_percentage || 100}% yield)`).join(', ')
+            : '<span style="color:#94a3b8; font-style:italic;">No ingredients added</span>';
+
           tbody.innerHTML += `
             <tr>
               <td><strong>${d.item_code}</strong></td>
               <td>${d.dish_name}</td>
-              <td>₹${d.price}</td>
+              <td>₹${Number(d.price || 0).toLocaleString()}</td>
               <td style="font-size: 12px; color: #475569;">${bom}</td>
             </tr>
           `;
@@ -746,7 +790,11 @@
           wasteSelect.innerHTML += `<option value="${d.item_code}">${d.dish_name}</option>`;
         });
       } catch (err) {
-        console.error(err);
+        console.error("fetchDishes error:", err);
+        const tbody = document.getElementById('dishes-table');
+        if (tbody) {
+          tbody.innerHTML = `<tr><td colspan="4" style="color:#ef4444;">Error loading menu: ${err.message}</td></tr>`;
+        }
       }
     }
 
@@ -822,11 +870,11 @@
         const data = await res.json();
         
         document.getElementById('stat-revenue').innerText = `₹${(data.totalRevenue || 0).toLocaleString()}`;
-        document.getElementById('stat-potential-waste').innerText = `₹${(data.potentialWastageSales || 0).toLocaleString()}`;
-        document.getElementById('stat-max-revenue').innerText = `₹${(data.potentialMaxRevenue || 0).toLocaleString()}`;
+        document.getElementById('stat-cogs').innerText = `₹${(data.totalCOGS || 0).toLocaleString()}`;
+        document.getElementById('stat-real-profit').innerText = `₹${(data.realBusinessProfit || 0).toLocaleString()}`;
+        document.getElementById('stat-asset-val').innerText = `₹${(data.inventoryAssetValue || 0).toLocaleString()}`;
+        document.getElementById('stat-cash-profit').innerText = `₹${(data.netCashFlowProfit || 0).toLocaleString()}`;
         document.getElementById('stat-wastage-cost').innerText = `₹${(data.totalWastageCost || 0).toLocaleString()}`;
-        document.getElementById('stat-actual-profit').innerText = `₹${(data.actualNetProfit || 0).toLocaleString()}`;
-        document.getElementById('stat-max-profit').innerText = `₹${(data.potentialMaxProfit || 0).toLocaleString()}`;
       } catch (err) {
         console.error(err);
       }
@@ -896,10 +944,10 @@
             <tr>
               <td><strong>${item.ingredient_name}</strong></td>
               <td>${item.human_unit}</td>
-              <td style="font-weight:bold; font-size:14px;">₹${item.latest_purchase_rate.toLocaleString()} / ${item.human_unit}</td>
+              <td style="font-weight:bold; font-size:14px; color:#2563eb;">₹${item.moving_avg_rate.toLocaleString()} / ${item.human_unit}</td>
+              <td style="font-weight:bold;">₹${item.latest_purchase_rate.toLocaleString()} / ${item.human_unit}</td>
               <td>${item.latest_purchase_date ? new Date(item.latest_purchase_date).toLocaleDateString() : 'N/A'}</td>
               <td>₹${item.previous_purchase_rate.toLocaleString()} / ${item.human_unit}</td>
-              <td style="color:#64748b;">₹${item.moving_avg_rate.toLocaleString()} / ${item.human_unit}</td>
               <td>${indicator}</td>
             </tr>
           `;
